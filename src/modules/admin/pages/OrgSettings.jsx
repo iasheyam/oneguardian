@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import './OrgSettings.css'
 import { mockMembers, mockDevices, mockVehicles, mockGeofences, mockRoles } from '../data/mockSettings'
+import { useAccounts } from '../contexts/AccountsContext'
 
 const STATUS_META = {
   normal:  { color: '#37C2B8', label: 'SECURE'  },
@@ -22,6 +23,22 @@ const ROLE_CHIP_META = {
   Agent:     { color: '#66727A' },
   'Read-only': { color: '#66727A' },
 }
+
+const ACC_STATUS = {
+  active:   { color: '#37C2B8', label: 'ACTIVE'   },
+  inactive: { color: '#66727A', label: 'INACTIVE' },
+}
+
+const ACTIVITY_TYPES = {
+  login:    { label: 'LOGIN',    color: '#37C2B8' },
+  ops:      { label: 'OPS',      color: '#5AA9C2' },
+  alert:    { label: 'ALERT',    color: '#E0A63C' },
+  export:   { label: 'EXPORT',   color: '#66727A' },
+  settings: { label: 'SETTINGS', color: '#7B8FBD' },
+  member:   { label: 'MEMBER',   color: '#9B6BCC' },
+}
+
+const EDIT_ROLES = ['Admin', 'Operator', 'Agent', 'Read-only']
 
 const GEO_TYPE_META = {
   'SAFE ZONE': { color: '#37C2B8' },
@@ -72,7 +89,12 @@ export default function OrgSettings() {
   const active   = sectionFromPath(location.pathname)
 
   function handleInviteMember(newMember) {
-    setMembers(prev => [...prev, newMember])
+    setMembers(prev => [...prev, { ...newMember, assignments: [], activity: [] }])
+    navigate('/admin/settings/members')
+  }
+
+  function handleUpdateMember(updated) {
+    setMembers(prev => prev.map(m => m.id === updated.id ? updated : m))
     navigate('/admin/settings/members')
   }
 
@@ -127,8 +149,9 @@ export default function OrgSettings() {
       <div className="os-content">
         <Routes>
           <Route index element={<Navigate to="members" replace />} />
-          <Route path="members"          element={<MembersSection members={members} />} />
-          <Route path="members/new"      element={<MemberInviteView onSave={handleInviteMember} />} />
+          <Route path="members"             element={<MembersSection members={members} onEdit={id => navigate(`/admin/settings/members/${id}`)} />} />
+          <Route path="members/new"         element={<MemberInviteView onSave={handleInviteMember} />} />
+          <Route path="members/:memberId"   element={<MemberEditView members={members} onSave={handleUpdateMember} />} />
           <Route path="devices"          element={<DevicesSection devices={devices} />} />
           <Route path="devices/new"      element={<DeviceCreateView onSave={handleCreateDevice} />} />
           <Route path="vehicles"         element={<VehiclesSection vehicles={vehicles} />} />
@@ -145,7 +168,7 @@ export default function OrgSettings() {
 }
 
 /* ── members ──────────────────────────────────────────────────── */
-function MembersSection({ members }) {
+function MembersSection({ members, onEdit }) {
   const navigate   = useNavigate()
   const twoFaCount = members.filter(m => m.twoFactor).length
   return (
@@ -169,6 +192,7 @@ function MembersSection({ members }) {
               <th>2FA</th>
               <th>LAST ACTIVE</th>
               <th>STATUS</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -187,10 +211,7 @@ function MembersSection({ members }) {
                     </div>
                   </td>
                   <td>
-                    <Chip
-                      label={m.role}
-                      color={roleMeta.color}
-                    />
+                    <Chip label={m.role} color={roleMeta.color} />
                   </td>
                   <td>
                     <Chip
@@ -201,6 +222,9 @@ function MembersSection({ members }) {
                   <td className="os-td-mono">{m.lastActive}</td>
                   <td>
                     <Chip label={statusMeta.label} color={statusMeta.color} dot />
+                  </td>
+                  <td>
+                    <button className="os-row-edit-btn" onClick={() => onEdit(m.id)}>Edit →</button>
                   </td>
                 </tr>
               )
@@ -789,6 +813,314 @@ function RoleEditView({ roles, onSave }) {
       </div>
     </div>
   )
+}
+
+/* ── member edit ──────────────────────────────────────────────── */
+function MemberEditView({ members, onSave }) {
+  const { memberId } = useParams()
+  const navigate     = useNavigate()
+  const { accounts } = useAccounts()
+  const member       = members.find(m => m.id === memberId)
+
+  const [name,        setName]        = useState(member?.name ?? '')
+  const [email,       setEmail]       = useState(member?.email ?? '')
+  const [phone,       setPhone]       = useState(member?.phone ?? '')
+  const [role,        setRole]        = useState(member?.role ?? 'Operator')
+  const [twoFactor,   setTwoFactor]   = useState(member?.twoFactor ?? false)
+  const [assignments, setAssignments] = useState(
+    () => (member?.assignments ?? []).map(a =>
+      typeof a === 'string'
+        ? { accountId: a, scope: 'account', groupIds: [], unitIds: [] }
+        : a
+    )
+  )
+  const [showPicker,  setShowPicker]  = useState(false)
+
+  if (!member) {
+    return (
+      <div className="os-section">
+        <div className="re-header">
+          <button className="re-back" onClick={() => navigate('/admin/settings/members')}>← MEMBERS</button>
+        </div>
+        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 12, color: 'var(--adm-text-dim)' }}>
+          Member not found.
+        </span>
+      </div>
+    )
+  }
+
+  const availableAccounts = accounts.filter(a => !assignments.some(x => x.accountId === a.id))
+  const canSave           = name.trim().length > 0 && email.trim().includes('@')
+
+  function addAssignment(accountId) {
+    setAssignments(p => [...p, { accountId, scope: 'account', groupIds: [], unitIds: [] }])
+    setShowPicker(false)
+  }
+  function removeAssignment(accountId) {
+    setAssignments(p => p.filter(x => x.accountId !== accountId))
+  }
+  function setScopeForAccount(accountId, scope) {
+    setAssignments(p => p.map(x => x.accountId !== accountId ? x : { ...x, scope, groupIds: [], unitIds: [] }))
+  }
+  function toggleGroup(accountId, groupId) {
+    setAssignments(p => p.map(x => {
+      if (x.accountId !== accountId) return x
+      const has = x.groupIds.includes(groupId)
+      return { ...x, groupIds: has ? x.groupIds.filter(id => id !== groupId) : [...x.groupIds, groupId] }
+    }))
+  }
+  function toggleUnit(accountId, unitId) {
+    setAssignments(p => p.map(x => {
+      if (x.accountId !== accountId) return x
+      const has = x.unitIds.includes(unitId)
+      return { ...x, unitIds: has ? x.unitIds.filter(id => id !== unitId) : [...x.unitIds, unitId] }
+    }))
+  }
+
+  function handleSave() {
+    if (!canSave) return
+    onSave({ ...member, name: name.trim(), email: email.trim(), phone: phone.trim(), role, twoFactor, assignments })
+  }
+
+  const isOwner = member.role === 'Owner'
+
+  return (
+    <div className="os-section">
+      {/* ── header ── */}
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/members')}>← MEMBERS</button>
+        <div className="re-header__title">
+          <Avatar name={name || member.name} role={role} />
+          <span className="re-header__name">{name || member.name}</span>
+        </div>
+        <button className="re-save" onClick={handleSave} disabled={!canSave}>Save changes</button>
+      </div>
+
+      {/* ── profile ── */}
+      <div className="re-block">
+        <span className="re-block__label">PROFILE</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Full name <span className="re-required">*</span></label>
+            <input
+              className="re-field-input"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Email address <span className="re-required">*</span></label>
+            <input
+              className="re-field-input"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Phone</label>
+            <input
+              className="re-field-input re-field-input--mono"
+              placeholder="+1 000 000 0000"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Role</label>
+            {isOwner ? (
+              <span className="me-owner-note">Owner role cannot be changed.</span>
+            ) : (
+              <PillGroup options={EDIT_ROLES} value={role} onChange={setRole} />
+            )}
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Two-factor authentication</label>
+            <PillGroup
+              options={['Enabled', 'Disabled']}
+              value={twoFactor ? 'Enabled' : 'Disabled'}
+              onChange={v => setTwoFactor(v === 'Enabled')}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── account access ── */}
+      <div className="re-block">
+        <div className="re-block__header">
+          <div>
+            <span className="re-block__label">ACCOUNT ACCESS</span>
+            <span className="re-block__sub">Grant full account, specific groups, or individual units</span>
+          </div>
+          <div className="re-picker-wrap">
+            <button
+              className="os-action-btn"
+              onClick={() => setShowPicker(v => !v)}
+              disabled={availableAccounts.length === 0}
+            >
+              + Assign account
+            </button>
+            {showPicker && (
+              <>
+                <div className="re-picker-backdrop" onClick={() => setShowPicker(false)} />
+                <div className="re-picker">
+                  {availableAccounts.map(a => {
+                    const sm = ACC_STATUS[a.status] ?? ACC_STATUS.inactive
+                    return (
+                      <button key={a.id} className="re-picker__item" onClick={() => addAssignment(a.id)}>
+                        <span className="me-acc-avatar" style={{ background: accAvatarColor(a.id) }}>
+                          {accInitials(a.name)}
+                        </span>
+                        <div>
+                          <span className="re-picker__name">{a.name}</span>
+                          <span className="re-picker__role">{a.type} · {a.units.length} units</span>
+                        </div>
+                        <span style={{ marginLeft: 'auto', fontSize: 10, color: sm.color }}>{sm.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {assignments.length === 0 ? (
+          <span className="re-members-empty">No accounts assigned. Add at least one account to grant access.</span>
+        ) : (
+          <div className="me-assign-cards">
+            {assignments.map(assign => {
+              const account = accounts.find(a => a.id === assign.accountId)
+              if (!account) return null
+              const sm       = ACC_STATUS[account.status] ?? ACC_STATUS.inactive
+              const people   = account.units.filter(u => u.type === 'person').length
+              const vehicles = account.units.filter(u => u.type === 'vehicle').length
+
+              const scopeMeta = assign.scope === 'account'
+                ? `Full access · ${people}p · ${vehicles}v · ${account.groups.length}g`
+                : assign.scope === 'groups'
+                  ? `${assign.groupIds.length} of ${account.groups.length} ${account.groups.length === 1 ? 'group' : 'groups'}`
+                  : `${assign.unitIds.length} of ${account.units.length} ${account.units.length === 1 ? 'unit' : 'units'}`
+
+              return (
+                <div key={assign.accountId} className="me-assign-card">
+                  <div className="me-assign-card__header">
+                    <span className="me-acc-avatar" style={{ background: accAvatarColor(account.id) }}>
+                      {accInitials(account.name)}
+                    </span>
+                    <div className="me-assign-info">
+                      <span className="me-assign-name">{account.name}</span>
+                      <span className="me-assign-meta">{scopeMeta}</span>
+                    </div>
+                    <div className="me-scope-tabs">
+                      {[
+                        { key: 'account', label: 'Account' },
+                        { key: 'groups',  label: 'Groups'  },
+                        { key: 'units',   label: 'Units'   },
+                      ].map(({ key, label }) => (
+                        <button
+                          key={key}
+                          className={`me-scope-tab${assign.scope === key ? ' active' : ''}`}
+                          onClick={() => setScopeForAccount(assign.accountId, key)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <button className="re-remove-btn" onClick={() => removeAssignment(assign.accountId)}>Remove</button>
+                  </div>
+
+                  {assign.scope === 'groups' && (
+                    <div className="me-assign-card__body">
+                      <span className="me-assign-body-label">SELECT GROUPS</span>
+                      {account.groups.length === 0 ? (
+                        <span className="me-no-items">This account has no groups yet.</span>
+                      ) : (
+                        <div className="me-item-grid">
+                          {account.groups.map(g => {
+                            const active = assign.groupIds.includes(g.id)
+                            return (
+                              <button
+                                key={g.id}
+                                className={`me-item-pill${active ? ' active' : ''}`}
+                                onClick={() => toggleGroup(assign.accountId, g.id)}
+                              >
+                                {active && <CheckIcon />}
+                                {g.name}
+                                <span className="me-item-count">{g.unitIds.length}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {assign.scope === 'units' && (
+                    <div className="me-assign-card__body">
+                      <span className="me-assign-body-label">SELECT UNITS</span>
+                      <div className="me-item-grid">
+                        {account.units.map(u => {
+                          const active = assign.unitIds.includes(u.id)
+                          return (
+                            <button
+                              key={u.id}
+                              className={`me-item-pill${active ? ' active' : ''}`}
+                              onClick={() => toggleUnit(assign.accountId, u.id)}
+                            >
+                              {active && <CheckIcon />}
+                              <span className={`me-item-type-dot me-item-type-dot--${u.type}`} />
+                              {u.type === 'person' ? u.name : u.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── activity ── */}
+      <div className="re-block">
+        <div className="re-block__header">
+          <span className="re-block__label">ACTIVITY — LAST 30 DAYS</span>
+          <span className="me-activity-count">{(member.activity ?? []).length} events</span>
+        </div>
+        {(member.activity ?? []).length === 0 ? (
+          <span className="re-members-empty">No activity recorded yet.</span>
+        ) : (
+          <div className="me-activity-list">
+            {(member.activity ?? []).map(ev => {
+              const typeMeta = ACTIVITY_TYPES[ev.type] ?? ACTIVITY_TYPES.login
+              return (
+                <div key={ev.id} className="me-activity-row">
+                  <span className="me-activity-dot" style={{ background: typeMeta.color }} />
+                  <span className="me-activity-time">{ev.time}</span>
+                  <span className="me-activity-type" style={{ color: typeMeta.color }}>{typeMeta.label}</span>
+                  <span className="me-activity-desc">{ev.desc}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function accInitials(name) {
+  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+}
+
+const ACC_AVATAR_COLORS = ['#193A2E', '#192B3A', '#1A1D3A', '#2C1A2E', '#3A2C19']
+function accAvatarColor(id) {
+  const hash = id.split('').reduce((h, c) => h + c.charCodeAt(0), 0)
+  return ACC_AVATAR_COLORS[hash % ACC_AVATAR_COLORS.length]
 }
 
 /* ── member invite ────────────────────────────────────────────── */

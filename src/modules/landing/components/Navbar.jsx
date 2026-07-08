@@ -23,9 +23,9 @@ export default function Navbar() {
   return (
     <header className={`navbar${scrolled ? ' navbar--scrolled' : ''}`}>
       <div className="navbar__inner container">
-        <a href="#" className="navbar__logo" aria-label="OneGuardian home">
+        <a href="#" className="navbar__logo" aria-label="TelematicsGuardian home">
           <LogoMark />
-          <span>OneGuardian</span>
+          <span>TelematicsGuardian</span>
         </a>
 
         <nav className="navbar__nav" aria-label="Main navigation">

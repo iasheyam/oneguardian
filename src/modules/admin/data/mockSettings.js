@@ -1,10 +1,96 @@
 export const mockMembers = [
-  { id: 'm1', name: 'Sarah Harrington', email: 'sarah@oneguardian.io',  role: 'Owner',     twoFactor: true,  status: 'online',  lastActive: 'Now' },
-  { id: 'm2', name: 'James Cole',       email: 'james@oneguardian.io',  role: 'Admin',     twoFactor: true,  status: 'away',    lastActive: '4m ago' },
-  { id: 'm3', name: 'Marcus Webb',      email: 'marcus@oneguardian.io', role: 'Operator',  twoFactor: true,  status: 'online',  lastActive: 'Now' },
-  { id: 'm4', name: 'Diana Reyes',      email: 'diana@oneguardian.io',  role: 'Operator',  twoFactor: false, status: 'online',  lastActive: '1m ago' },
-  { id: 'm5', name: 'Tyler Nash',       email: 'tyler@oneguardian.io',  role: 'Agent',     twoFactor: true,  status: 'offline', lastActive: '2h ago' },
-  { id: 'm6', name: 'Emma Park',        email: 'emma@oneguardian.io',   role: 'Read-only', twoFactor: false, status: 'away',    lastActive: '18m ago' },
+  {
+    id: 'm1', name: 'Sarah Harrington', email: 'sarah@telematicsguardian.io', phone: '+1 214 555 0011',
+    role: 'Owner', twoFactor: true, status: 'online', lastActive: 'Now',
+    assignments: [
+      { accountId: 'acc-001', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-002', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-003', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-004', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-005', scope: 'account', groupIds: [], unitIds: [] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login',    desc: 'Logged in from Dallas, TX',                       time: 'Jul 8, 09:04' },
+      { id: 'a2', type: 'ops',      desc: 'Viewed live operations',                           time: 'Jul 8, 09:06' },
+      { id: 'a3', type: 'settings', desc: 'Updated geofence — I-35W North Corridor',          time: 'Jul 7, 15:30' },
+      { id: 'a4', type: 'member',   desc: 'Invited new member — Tyler Nash',                  time: 'Jul 7, 11:20' },
+      { id: 'a5', type: 'alert',    desc: 'Acknowledged alert — SP-04 HARRIER geofence exit', time: 'Jul 6, 14:22' },
+      { id: 'a6', type: 'export',   desc: 'Exported footage — SP-01 FALCON (14:10–14:25)',    time: 'Jul 5, 16:05' },
+      { id: 'a7', type: 'login',    desc: 'Logged in from Dallas, TX',                        time: 'Jul 5, 08:55' },
+    ],
+  },
+  {
+    id: 'm2', name: 'James Cole', email: 'james@telematicsguardian.io', phone: '+1 214 555 0022',
+    role: 'Admin', twoFactor: true, status: 'away', lastActive: '4m ago',
+    assignments: [
+      { accountId: 'acc-001', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-002', scope: 'groups',  groupIds: ['grp-cf-01', 'grp-cf-02'], unitIds: [] },
+      { accountId: 'acc-003', scope: 'account', groupIds: [], unitIds: [] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login',    desc: 'Logged in from Dallas, TX',               time: 'Jul 8, 08:48' },
+      { id: 'a2', type: 'ops',      desc: 'Viewed live operations',                   time: 'Jul 8, 08:50' },
+      { id: 'a3', type: 'alert',    desc: 'Escalated alert — P-02 ECHO battery low',  time: 'Jul 8, 08:55' },
+      { id: 'a4', type: 'settings', desc: 'Provisioned new device — SP-06',           time: 'Jul 7, 14:10' },
+      { id: 'a5', type: 'export',   desc: 'Exported footage — SP-03 KITE',            time: 'Jul 6, 11:45' },
+      { id: 'a6', type: 'login',    desc: 'Logged in from Dallas, TX',                time: 'Jul 6, 08:30' },
+    ],
+  },
+  {
+    id: 'm3', name: 'Marcus Webb', email: 'marcus@telematicsguardian.io', phone: '+1 817 555 0033',
+    role: 'Operator', twoFactor: true, status: 'online', lastActive: 'Now',
+    assignments: [
+      { accountId: 'acc-001', scope: 'account', groupIds: [], unitIds: [] },
+      { accountId: 'acc-004', scope: 'units',   groupIds: [], unitIds: ['u-dt-v01', 'u-dt-v02'] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login',  desc: 'Logged in from Fort Worth, TX',              time: 'Jul 8, 07:55' },
+      { id: 'a2', type: 'ops',    desc: 'Viewed live operations',                     time: 'Jul 8, 07:57' },
+      { id: 'a3', type: 'alert',  desc: 'Acknowledged alert — SP-04 HARRIER',         time: 'Jul 8, 08:12' },
+      { id: 'a4', type: 'ops',    desc: 'Tracked unit — SP-01 FALCON route change',   time: 'Jul 7, 16:40' },
+      { id: 'a5', type: 'export', desc: 'Exported footage — SP-04 HARRIER',           time: 'Jul 7, 10:22' },
+    ],
+  },
+  {
+    id: 'm4', name: 'Diana Reyes', email: 'diana@telematicsguardian.io', phone: '+1 972 555 0044',
+    role: 'Operator', twoFactor: false, status: 'online', lastActive: '1m ago',
+    assignments: [
+      { accountId: 'acc-002', scope: 'groups', groupIds: ['grp-cf-02'], unitIds: [] },
+      { accountId: 'acc-003', scope: 'units',  groupIds: [], unitIds: ['u-oh-p01', 'u-oh-p02'] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login',  desc: 'Logged in from Plano, TX',                  time: 'Jul 8, 09:01' },
+      { id: 'a2', type: 'ops',    desc: 'Viewed live operations',                     time: 'Jul 8, 09:03' },
+      { id: 'a3', type: 'alert',  desc: 'Acknowledged alert — SP-05 MERLIN offline', time: 'Jul 7, 13:15' },
+      { id: 'a4', type: 'ops',    desc: 'Tracked unit — SP-03 KITE',                 time: 'Jul 6, 15:50' },
+    ],
+  },
+  {
+    id: 'm5', name: 'Tyler Nash', email: 'tyler@telematicsguardian.io', phone: '+1 214 555 0055',
+    role: 'Agent', twoFactor: true, status: 'offline', lastActive: '2h ago',
+    assignments: [
+      { accountId: 'acc-001', scope: 'units', groupIds: [], unitIds: ['u-vc-p02'] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login',  desc: 'Logged in from Dallas, TX',       time: 'Jul 8, 07:10' },
+      { id: 'a2', type: 'ops',    desc: 'Viewed own unit — SP-02 OSPREY',   time: 'Jul 8, 07:12' },
+      { id: 'a3', type: 'alert',  desc: 'Triggered duress test — cleared',  time: 'Jul 7, 12:00' },
+      { id: 'a4', type: 'login',  desc: 'Logged in from Dallas, TX',        time: 'Jul 7, 08:05' },
+    ],
+  },
+  {
+    id: 'm6', name: 'Emma Park', email: 'emma@telematicsguardian.io', phone: '+1 469 555 0066',
+    role: 'Read-only', twoFactor: false, status: 'away', lastActive: '18m ago',
+    assignments: [
+      { accountId: 'acc-001', scope: 'groups',  groupIds: ['grp-vc-01'], unitIds: [] },
+      { accountId: 'acc-002', scope: 'account', groupIds: [], unitIds: [] },
+    ],
+    activity: [
+      { id: 'a1', type: 'login', desc: 'Logged in from McKinney, TX',  time: 'Jul 8, 08:42' },
+      { id: 'a2', type: 'ops',   desc: 'Viewed live operations',        time: 'Jul 8, 08:44' },
+      { id: 'a3', type: 'login', desc: 'Logged in from McKinney, TX',  time: 'Jul 7, 09:00' },
+    ],
+  },
 ]
 
 export const mockDevices = [

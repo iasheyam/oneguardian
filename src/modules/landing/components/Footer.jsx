@@ -32,7 +32,7 @@ export default function Footer() {
           <div className="footer__brand">
             <div className="footer__logo">
               <LogoMark />
-              <span>OneGuardian</span>
+              <span>TelematicsGuardian</span>
             </div>
             <p className="footer__tagline">
               Live remote security monitoring for individuals,
@@ -58,7 +58,7 @@ export default function Footer() {
 
         <div className="footer__bottom">
           <p className="footer__copy">
-            &copy; {new Date().getFullYear()} OneGuardian. All rights reserved.
+            &copy; {new Date().getFullYear()} TelematicsGuardian. All rights reserved.
           </p>
           <div className="footer__legal">
             {/* Placeholder links — policies not yet written */}

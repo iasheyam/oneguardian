@@ -17,7 +17,7 @@ export default function Trust() {
 
       <div className="container trust__content">
         <div className="trust__left">
-          <span className="section-label">Why OneGuardian</span>
+          <span className="section-label">Why TelematicsGuardian</span>
           <h2 className="trust__title">
             An active team.<br />Not a location pin.
           </h2>

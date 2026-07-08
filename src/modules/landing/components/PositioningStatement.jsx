@@ -8,7 +8,7 @@ export default function PositioningStatement() {
           Most security services react after something goes wrong.
           <br />
           <span className="positioning__emphasis">
-            OneGuardian watches in real time, and steps in before it does.
+            TelematicsGuardian watches in real time, and steps in before it does.
           </span>
         </p>
       </div>

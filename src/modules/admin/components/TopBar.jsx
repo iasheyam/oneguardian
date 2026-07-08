@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import './TopBar.css'
 
 function pad(n) { return String(n).padStart(2, '0') }
 
 export default function TopBar({ crumb, fleetStatus }) {
+  const navigate      = useNavigate()
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -18,10 +20,17 @@ export default function TopBar({ crumb, fleetStatus }) {
 
   return (
     <header className="top-bar">
-      <div className="top-bar__crumb">
-        <span className="top-bar__title">{crumb?.title}</span>
-        <span className="top-bar__sub">{crumb?.sub}</span>
-      </div>
+      <nav className="top-bar__breadcrumb" aria-label="Breadcrumb">
+        {(crumb?.breadcrumb ?? []).map((seg, i) => (
+          <span key={i} className="top-bar__bc-item">
+            {i > 0 && <span className="top-bar__bc-sep">/</span>}
+            {seg.to
+              ? <button className="top-bar__bc-link" onClick={() => navigate(seg.to)}>{seg.label}</button>
+              : <span className="top-bar__bc-current">{seg.label}</span>
+            }
+          </span>
+        ))}
+      </nav>
 
       <div className="top-bar__right">
         <div

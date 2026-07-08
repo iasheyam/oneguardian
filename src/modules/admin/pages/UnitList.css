@@ -64,7 +64,7 @@
 
 .ul-card:hover {
   background: var(--adm-bg-raised);
-  border-color: #26333b;
+  border-color: var(--adm-border);
 }
 
 /* left accent bar */

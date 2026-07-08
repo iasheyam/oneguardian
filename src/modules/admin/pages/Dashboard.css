@@ -44,7 +44,7 @@
 }
 
 .filter-tab:hover:not(.active) {
-  border-color: #2a3740;
+  border-color: var(--adm-border);
   color: var(--adm-text);
 }
 
@@ -158,7 +158,8 @@
 }
 
 .unit-card:hover {
-  background: #111922;
+  background: var(--adm-bg-raised);
+  border-color: var(--adm-border);
 }
 
 .unit-card.selected {

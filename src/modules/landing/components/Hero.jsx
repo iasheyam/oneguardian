@@ -19,7 +19,7 @@ export default function Hero() {
         </div>
 
         <div className="hero__image">
-          <img src={heroImg} alt="OneGuardian security operations" className="hero__img" />
+          <img src={heroImg} alt="TelematicsGuardian security operations" className="hero__img" />
         </div>
       </div>
     </section>

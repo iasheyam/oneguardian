@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { useAccounts } from '../contexts/AccountsContext'
 import NavRail from './NavRail'
 import TopBar from './TopBar'
 import Dashboard from '../pages/Dashboard'
@@ -7,25 +8,19 @@ import UnitList from '../pages/UnitList'
 import UnitDetail from '../pages/UnitDetail'
 import OrgSettings from '../pages/OrgSettings'
 import { FleetGroups, FleetSubgroups, FleetVehicles } from '../pages/Fleets'
+import { AccountList, AccountDetail, GroupDetail } from '../pages/Accounts'
 import Feed from '../pages/Feed'
 import { mockFleets } from '../data/mockFleets'
-import { mockUnits } from '../data/mockUnits'
+import { mockUnits }  from '../data/mockUnits'
 import './AdminShell.css'
 
 const NAV_ROUTES = {
   dashboard: '/admin',
   unit:      '/admin/unit',
   feed:      '/admin/feed',
+  accounts:  '/admin/accounts',
   fleet:     '/admin/fleets',
   admin:     '/admin/settings',
-}
-
-const CRUMBS = {
-  dashboard: { title: 'Live Operations',  sub: 'Dallas · TX Sector · 7 units deployed' },
-  unit:      { title: 'Units',            sub: 'All vehicles & people' },
-  feed:      { title: 'Feed',             sub: 'Live camera feeds from all devices' },
-  fleet:     { title: 'Fleets',           sub: 'Fleet groups & subgroups' },
-  admin:     { title: 'Organization',     sub: 'Members · devices · settings' },
 }
 
 const SETTINGS_SECTION_LABELS = {
@@ -38,16 +33,18 @@ const SETTINGS_SECTION_LABELS = {
 
 function screenFromPath(pathname) {
   if (pathname.startsWith('/admin/unit')) return 'unit'
-  if (pathname.startsWith('/admin/feed'))     return 'feed'
+  if (pathname.startsWith('/admin/feed'))      return 'feed'
+  if (pathname.startsWith('/admin/accounts')) return 'accounts'
   if (pathname.startsWith('/admin/fleets'))   return 'fleet'
   if (pathname.startsWith('/admin/settings')) return 'admin'
   return 'dashboard'
 }
 
 export default function AdminShell() {
-  const location = useLocation()
+  const location  = useLocation()
   const navigate  = useNavigate()
   const screen    = screenFromPath(location.pathname)
+  const { accounts } = useAccounts()
 
   const fleetStatus = useMemo(() => {
     const hasDuress = mockUnits.some(u => u.status === 'duress')
@@ -59,51 +56,107 @@ export default function AdminShell() {
 
   const crumb = useMemo(() => {
     const path = location.pathname
+    const bc   = (segs) => ({ breadcrumb: segs })
+    const leaf  = (label) => ({ label, to: null })
+    const link  = (label, to) => ({ label, to })
 
+    // ── unit detail ──────────────────────────────
     const unitMatch = path.match(/^\/admin\/unit\/(.+)$/)
     if (unitMatch) {
       const unit = mockUnits.find(u => u.id === unitMatch[1])
-      return {
-        title: 'Unit Detail',
-        sub: unit ? `${unit.id} · ${unit.callsign} · ${unit.principal}` : unitMatch[1],
-      }
+      return bc([
+        link('Units', '/admin/unit'),
+        leaf(unit ? `${unit.id} · ${unit.callsign}` : unitMatch[1]),
+      ])
     }
 
+    // ── unit list ────────────────────────────────
+    if (path === '/admin/unit') return bc([leaf('Units')])
+
+    // ── accounts ─────────────────────────────────
+    if (path.startsWith('/admin/accounts')) {
+      const parts = path.replace('/admin/accounts', '').split('/').filter(Boolean)
+
+      if (parts.length === 0) return bc([leaf('Accounts')])
+
+      const segs = [link('Accounts', '/admin/accounts')]
+      const acc  = accounts.find(a => a.id === parts[0])
+
+      if (!acc) return bc([...segs, leaf(parts[0])])
+      segs.push(parts.length === 1 ? leaf(acc.name) : link(acc.name, `/admin/accounts/${acc.id}`))
+
+      if (parts.length >= 2) {
+        const grp = acc.groups.find(g => g.id === parts[1])
+        segs.push(grp ? leaf(grp.name) : leaf(parts[1]))
+      }
+
+      return bc(segs)
+    }
+
+    // ── feed ─────────────────────────────────────
+    if (path.startsWith('/admin/feed')) return bc([leaf('Feed')])
+
+    // ── fleets ───────────────────────────────────
     if (path.startsWith('/admin/fleets')) {
       const parts = path.replace('/admin/fleets', '').split('/').filter(Boolean)
-      if (parts.length >= 2) {
+      const segs  = [link('Fleets', '/admin/fleets')]
+
+      if (parts.length >= 1) {
         const fleet = mockFleets.find(f => f.id === parts[0])
-        const sg    = fleet?.subgroups.find(s => s.id === parts[1])
-        const sgName = sg?.name ?? (parts[1] === 'direct' ? 'All Vehicles' : parts[1])
-        return { title: 'Fleets', sub: fleet ? `${fleet.name} · ${sgName}` : parts[1] }
+        if (fleet) segs.push(parts.length === 1
+          ? leaf(fleet.name)
+          : link(fleet.name, `/admin/fleets/${fleet.id}`))
+
+        if (parts.length >= 2) {
+          const sg     = fleet?.subgroups?.find(s => s.id === parts[1])
+          const sgName = sg?.name ?? (parts[1] === 'direct' ? 'All Vehicles' : parts[1])
+          segs.push(leaf(sgName))
+        }
+      } else {
+        segs[0] = leaf('Fleets')
       }
-      if (parts.length === 1) {
-        const fleet = mockFleets.find(f => f.id === parts[0])
-        return { title: 'Fleets', sub: fleet?.name ?? parts[0] }
-      }
-      return { title: 'Fleets', sub: 'All groups' }
+
+      return bc(segs)
     }
 
+    // ── settings ─────────────────────────────────
     if (path.startsWith('/admin/settings')) {
-      if (path.match(/\/settings\/members\/new$/))
-        return { title: 'Organization', sub: 'Members · Invite member' }
-      if (path.match(/\/settings\/roles\/new$/))
-        return { title: 'Organization', sub: 'Roles & access · New role' }
-      if (path.match(/\/settings\/roles\/.+$/))
-        return { title: 'Organization', sub: 'Roles & access · Edit role' }
-      if (path.match(/\/settings\/devices\/new$/))
-        return { title: 'Organization', sub: 'Devices · Provision device' }
-      if (path.match(/\/settings\/vehicles\/new$/))
-        return { title: 'Organization', sub: 'Vehicles · Add vehicle' }
-      if (path.match(/\/settings\/geofences\/new$/))
-        return { title: 'Organization', sub: 'Geofences · New geofence' }
+      const settingsRoot = link('Organization', '/admin/settings')
       const sectionMatch = path.match(/\/settings\/(\w+)/)
-      const section = sectionMatch?.[1] ?? 'members'
-      return { title: 'Organization', sub: SETTINGS_SECTION_LABELS[section] ?? 'Settings' }
+      const section      = sectionMatch?.[1] ?? 'members'
+      const sectionLabel = SETTINGS_SECTION_LABELS[section] ?? 'Settings'
+
+      if (path.match(/\/settings\/members\/new$/))
+        return bc([settingsRoot, link('Members', '/admin/settings/members'), leaf('Invite Member')])
+      if (path.match(/\/settings\/members\/.+$/))
+        return bc([settingsRoot, link('Members', '/admin/settings/members'), leaf('Edit Member')])
+      if (path.match(/\/settings\/roles\/new$/))
+        return bc([settingsRoot, link('Roles & Access', '/admin/settings/roles'), leaf('New Role')])
+      if (path.match(/\/settings\/roles\/.+$/))
+        return bc([settingsRoot, link('Roles & Access', '/admin/settings/roles'), leaf('Edit Role')])
+      if (path.match(/\/settings\/devices\/new$/))
+        return bc([settingsRoot, link('Devices', '/admin/settings/devices'), leaf('Provision Device')])
+      if (path.match(/\/settings\/vehicles\/new$/))
+        return bc([settingsRoot, link('Vehicles', '/admin/settings/vehicles'), leaf('Add Vehicle')])
+      if (path.match(/\/settings\/geofences\/new$/))
+        return bc([settingsRoot, link('Geofences', '/admin/settings/geofences'), leaf('New Geofence')])
+      if (sectionMatch)
+        return bc([settingsRoot, leaf(sectionLabel)])
+
+      return bc([leaf('Organization')])
     }
 
-    return CRUMBS[screen] ?? CRUMBS.dashboard
-  }, [location.pathname, screen])
+    // ── top-level pages ───────────────────────────
+    const TOP_LABELS = {
+      dashboard: 'Live Operations',
+      unit:      'Units',
+      feed:      'Feed',
+      accounts:  'Accounts',
+      fleet:     'Fleets',
+      admin:     'Organization',
+    }
+    return bc([leaf(TOP_LABELS[screen] ?? 'Live Operations')])
+  }, [location.pathname, screen, accounts])
 
   return (
     <div className="admin-shell">
@@ -115,12 +168,15 @@ export default function AdminShell() {
             <Route path="/"          element={<Dashboard units={mockUnits} />} />
             <Route path="/unit"      element={<UnitList   units={mockUnits} />} />
             <Route path="/unit/:id"  element={<UnitDetail units={mockUnits} />} />
-            <Route path="/feed"          element={<Feed />} />
+            <Route path="/feed"                                                    element={<Feed />} />
+            <Route path="/accounts"                                                element={<AccountList />} />
+            <Route path="/accounts/:accountId"             element={<AccountDetail />} />
+            <Route path="/accounts/:accountId/:groupId"    element={<GroupDetail />} />
             <Route path="/fleets"                          element={<FleetGroups />} />
             <Route path="/fleets/:fleetId"               element={<FleetSubgroups />} />
             <Route path="/fleets/:fleetId/:subgroupId"   element={<FleetVehicles />} />
             <Route path="/settings/*" element={<OrgSettings />} />
-            <Route path="*"          element={<AdminStub screen={screen} />} />
+            <Route path="*"          element={<AdminStub />} />
           </Routes>
         </main>
       </div>
@@ -128,11 +184,11 @@ export default function AdminShell() {
   )
 }
 
-function AdminStub({ screen }) {
+function AdminStub() {
   return (
     <div className="admin-stub">
-      <span className="admin-stub__title">{CRUMBS[screen]?.title ?? 'Coming soon'}</span>
-      <span className="admin-stub__sub">Coming soon</span>
+      <span className="admin-stub__title">Coming soon</span>
+      <span className="admin-stub__sub">This section is under construction</span>
     </div>
   )
 }

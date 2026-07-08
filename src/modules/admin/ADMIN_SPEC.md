@@ -1,8 +1,8 @@
-# OneGuardian Admin Panel — Feature Specification
+# TelematicsGuardian Admin Panel — Feature Specification
 
 > **Status**: Design reference phase. This document translates the Sparta Ops design sketch
 > into a buildable spec. Implement one module at a time. The design is directional — we adapt
-> it to OneGuardian's brand and backend (Traccar + Supabase), not copy it pixel-for-pixel.
+> it to TelematicsGuardian's brand and backend (Traccar + Supabase), not copy it pixel-for-pixel.
 
 ---
 
@@ -48,7 +48,7 @@ The panel lives at `/admin/*` inside the single React app. All routes are protec
 
 ## Design System
 
-> OneGuardian admin uses a **separate design system** from the landing page. The landing page uses a warm gold palette. The admin panel uses a cool tactical dark palette. They are independent CSS scopes.
+> TelematicsGuardian admin uses a **separate design system** from the landing page. The landing page uses a warm gold palette. The admin panel uses a cool tactical dark palette. They are independent CSS scopes.
 
 ### Color Tokens
 

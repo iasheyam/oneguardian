@@ -4,6 +4,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'OPS',   title: 'Live operations'        },
   { key: 'unit',      label: 'UNIT',  title: 'Vehicle detail'         },
   { key: 'feed',      label: 'FEED',  title: 'Live camera feeds'      },
+  { key: 'accounts',  label: 'ACCTS',  title: 'Account management'     },
   { key: 'fleet',     label: 'FLEETS', title: 'Fleet groups'           },
   { key: 'admin',     label: 'ADMIN', title: 'Organization settings'  },
 ]
@@ -11,15 +12,16 @@ const NAV_ITEMS = [
 function OpsIcon()   { return <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden><rect x="0" y="0" width="6.5" height="6.5" rx="1.5"/><rect x="9.5" y="0" width="6.5" height="6.5" rx="1.5"/><rect x="0" y="9.5" width="6.5" height="6.5" rx="1.5"/><rect x="9.5" y="9.5" width="6.5" height="6.5" rx="1.5"/></svg> }
 function UnitIcon()  { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.5"/><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg> }
 function MediaIcon() { return <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden><path d="M1.5 1.5L12.5 8L1.5 14.5V1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> }
+function AccountsIcon() { return <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden><rect x="1" y="4.5" width="12" height="11" rx="1.25" stroke="currentColor" strokeWidth="1.4"/><path d="M4.5 4.5V3a.5.5 0 01.5-.5h4a.5.5 0 01.5.5v1.5" stroke="currentColor" strokeWidth="1.4"/><rect x="5.75" y="9.5" width="2.5" height="6" rx="0.6" fill="currentColor"/><rect x="2.5" y="6.5" width="2" height="1.75" rx="0.5" fill="currentColor"/><rect x="9.5" y="6.5" width="2" height="1.75" rx="0.5" fill="currentColor"/></svg> }
 function FleetIcon() { return <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor" aria-hidden><rect x="0" y="0" width="16" height="2.5" rx="1.25"/><rect x="0" y="4.75" width="16" height="2.5" rx="1.25"/><rect x="0" y="9.5" width="16" height="2.5" rx="1.25"/></svg> }
 function AdminIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.41 1.41M11.37 11.37l1.41 1.41M3.22 12.78l1.41-1.41M11.37 4.63l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> }
 
-const ICONS = { dashboard: OpsIcon, unit: UnitIcon, feed: MediaIcon, fleet: FleetIcon, admin: AdminIcon }
+const ICONS = { dashboard: OpsIcon, unit: UnitIcon, feed: MediaIcon, accounts: AccountsIcon, fleet: FleetIcon, admin: AdminIcon }
 
 export default function NavRail({ screen, onNav }) {
   return (
     <nav className="nav-rail" aria-label="Main navigation">
-      <div className="nav-rail__logo" aria-label="OneGuardian">
+      <div className="nav-rail__logo" aria-label="TelematicsGuardian">
         <ShieldMark />
       </div>
 
