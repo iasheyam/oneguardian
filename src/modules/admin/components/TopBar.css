@@ -1,0 +1,97 @@
+.top-bar {
+  height: var(--adm-topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--adm-border);
+  background: var(--adm-bg-panel);
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.top-bar__crumb {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.top-bar__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--adm-text);
+  white-space: nowrap;
+}
+
+.top-bar__sub {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  color: var(--adm-text-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.top-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+/* ── status pill ──────────────────────── */
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+
+.status-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-pill__dot.blink {
+  animation: admBlink 0.9s ease-in-out infinite;
+}
+
+.status-pill__text {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+/* ── clock ────────────────────────────── */
+.top-bar__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.clock-zulu {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--adm-text);
+  letter-spacing: 0.04em;
+}
+
+.clock-local {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  color: var(--adm-text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ── animations ───────────────────────── */
+@keyframes admBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}

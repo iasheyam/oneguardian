@@ -1,0 +1,78 @@
+.admin-shell {
+  /* ── design tokens ─────────────────────────────── */
+  --adm-bg-base:    #0A0E10;
+  --adm-bg-panel:   #0F1519;
+  --adm-bg-raised:  #141F24;
+  --adm-border:     #1E2830;
+  --adm-border-sub: #151E23;
+
+  --adm-text:       #DFE4E6;
+  --adm-text-muted: #7D8990;
+  --adm-text-dim:   #5D676C;
+
+  --adm-secure:  #37C2B8;
+  --adm-warning: #E0A63C;
+  --adm-duress:  #F2495B;
+  --adm-offline: #66727A;
+
+  --adm-mono:      'IBM Plex Mono', 'Courier New', monospace;
+  --adm-nav-w:     56px;
+  --adm-topbar-h:  52px;
+
+  /* ── layout ────────────────────────────────────── */
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--adm-bg-base);
+  color: var(--adm-text);
+  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-content > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* placeholder for screens not yet built */
+.admin-stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+}
+
+.admin-stub__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.admin-stub__sub {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--adm-text-dim);
+}

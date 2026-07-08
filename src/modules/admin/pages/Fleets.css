@@ -1,0 +1,412 @@
+/* ── page shell ───────────────────────── */
+.fl-page {
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--adm-border) transparent;
+}
+
+.fl-page-header {
+  margin-bottom: 20px;
+}
+
+.fl-page-header__label {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--adm-text-dim);
+}
+
+/* ── back button ──────────────────────── */
+.fl-back {
+  background: none;
+  border: none;
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--adm-text-dim);
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 20px;
+  display: block;
+  transition: color 0.12s;
+}
+
+.fl-back:hover { color: var(--adm-secure); }
+
+/* ── section header ───────────────────── */
+.fl-section-header {
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.fl-section-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.fl-section-header__name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--adm-text);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.fl-section-header__sub {
+  font-size: 12px;
+  color: var(--adm-text-muted);
+}
+
+/* ── shared chip ──────────────────────── */
+.fl-chip {
+  font-family: var(--adm-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── shared stat ──────────────────────── */
+.fl-stat {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  color: var(--adm-text-dim);
+  letter-spacing: 0.03em;
+}
+
+.fl-alert-badge {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #E0A63C;
+  letter-spacing: 0.03em;
+}
+
+/* ── not found ────────────────────────── */
+.fl-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  font-family: var(--adm-mono);
+  font-size: 13px;
+  color: var(--adm-text-muted);
+}
+
+.fl-not-found button {
+  background: none;
+  border: 1px solid var(--adm-border);
+  color: var(--adm-secure);
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════
+   GRIDS
+═══════════════════════════════════════════ */
+.fl-grid { display: grid; }
+
+/* page 1 — fleet groups */
+.fl-grid--groups {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+/* page 2 — subgroups */
+.fl-grid--subgroups {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* page 3 — vehicles */
+.fl-grid--vehicles {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+/* ═══════════════════════════════════════════
+   PAGE 1 — FLEET GROUP CARDS
+═══════════════════════════════════════════ */
+.fl-group-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--adm-bg-panel);
+  border: 1px solid var(--adm-border);
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: background 0.1s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.fl-group-card:hover {
+  background: var(--adm-bg-raised);
+  border-color: rgba(55, 194, 184, 0.3);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+
+.fl-group-card.has-alert {
+  border-color: rgba(224, 166, 60, 0.3);
+}
+
+.fl-group-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fl-group-card__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--adm-text);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.fl-group-card__client {
+  font-size: 11.5px;
+  color: var(--adm-text-muted);
+}
+
+.fl-group-card__desc {
+  font-size: 12px;
+  color: var(--adm-text-dim);
+  line-height: 1.55;
+  margin: 4px 0 0;
+  flex: 1;
+}
+
+.fl-group-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.fl-group-card__arrow {
+  margin-left: auto;
+  font-family: var(--adm-mono);
+  font-size: 12px;
+  color: var(--adm-text-dim);
+  transition: color 0.12s, transform 0.12s;
+}
+
+.fl-group-card:hover .fl-group-card__arrow {
+  color: var(--adm-secure);
+  transform: translateX(3px);
+}
+
+/* ═══════════════════════════════════════════
+   PAGE 2 — SUBGROUP CARDS
+═══════════════════════════════════════════ */
+.fl-subgroup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--adm-bg-panel);
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: background 0.1s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.fl-subgroup-card:hover {
+  background: var(--adm-bg-raised);
+  border-color: rgba(55, 194, 184, 0.3);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+}
+
+.fl-subgroup-card.has-alert {
+  border-color: rgba(224, 166, 60, 0.3);
+}
+
+.fl-subgroup-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fl-subgroup-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--adm-text);
+}
+
+.fl-subgroup-card__arrow {
+  font-family: var(--adm-mono);
+  font-size: 13px;
+  color: var(--adm-text-dim);
+  transition: color 0.12s, transform 0.12s;
+}
+
+.fl-subgroup-card:hover .fl-subgroup-card__arrow {
+  color: var(--adm-secure);
+  transform: translateX(3px);
+}
+
+.fl-subgroup-card__count { margin-top: -2px; }
+.fl-subgroup-card__alert { margin-top: -2px; }
+
+/* unit status dot preview */
+.fl-subgroup-card__dots {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.fl-subgroup-card__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════
+   PAGE 3 — VEHICLE CARDS
+═══════════════════════════════════════════ */
+.fl-vehicle-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: var(--adm-bg-panel);
+  border: 1px solid var(--adm-border);
+  border-left: 3px solid var(--status-color, var(--adm-border));
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: background 0.1s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.fl-vehicle-card:hover {
+  background: var(--adm-bg-raised);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+
+.fl-vehicle-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.fl-vehicle-card__id-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fl-vehicle-card__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fl-vehicle-card__id {
+  font-family: var(--adm-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--adm-text);
+}
+
+.fl-vehicle-card__callsign {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--adm-text-dim);
+}
+
+.fl-vehicle-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+}
+
+.fl-vehicle-card__row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fl-vehicle-card__field-label {
+  font-family: var(--adm-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--adm-text-dim);
+}
+
+.fl-vehicle-card__field-value {
+  font-size: 12px;
+  color: var(--adm-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fl-vehicle-card__field-value.mono {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.fl-vehicle-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.fl-vehicle-card__updated {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  color: var(--adm-text-dim);
+  letter-spacing: 0.03em;
+}
+
+.fl-vehicle-card__open {
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--adm-secure);
+  transition: opacity 0.12s;
+}
+
+.fl-vehicle-card:hover .fl-vehicle-card__open { opacity: 0.8; }

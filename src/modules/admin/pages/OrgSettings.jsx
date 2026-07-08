@@ -1,0 +1,1124 @@
+import { useState } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import './OrgSettings.css'
+import { mockMembers, mockDevices, mockVehicles, mockGeofences, mockRoles } from '../data/mockSettings'
+
+const STATUS_META = {
+  normal:  { color: '#37C2B8', label: 'SECURE'  },
+  warning: { color: '#E0A63C', label: 'WARNING' },
+  offline: { color: '#66727A', label: 'OFFLINE' },
+}
+
+const MEMBER_STATUS_META = {
+  online:  { color: '#37C2B8', label: 'ONLINE'  },
+  away:    { color: '#E0A63C', label: 'AWAY'    },
+  offline: { color: '#66727A', label: 'OFFLINE' },
+}
+
+const ROLE_CHIP_META = {
+  Owner:     { color: '#37C2B8' },
+  Admin:     { color: '#37C2B8' },
+  Operator:  { color: '#66727A' },
+  Agent:     { color: '#66727A' },
+  'Read-only': { color: '#66727A' },
+}
+
+const GEO_TYPE_META = {
+  'SAFE ZONE': { color: '#37C2B8' },
+  'CORRIDOR':  { color: '#5AA9C2' },
+  'EXCLUSION': { color: '#E0A63C' },
+  'WAYPOINT':  { color: '#66727A' },
+}
+
+const ALL_PERMISSIONS = [
+  { label: 'Billing',          desc: 'Manage subscription, invoices, and seats' },
+  { label: 'Members',          desc: 'Invite, edit, and remove org members' },
+  { label: 'Devices',          desc: 'Provision and configure tracking devices' },
+  { label: 'Geofences',        desc: 'Create, edit, and delete geofence zones' },
+  { label: 'Live ops',         desc: 'View and interact with the live operations map' },
+  { label: 'Live ops (view)',  desc: 'View-only access to the live map' },
+  { label: 'Acknowledge',      desc: 'Acknowledge and close active alert events' },
+  { label: 'Escalate',         desc: 'Escalate alerts to Tier-2 response' },
+  { label: 'Export footage',   desc: 'Download and export recorded video clips' },
+  { label: 'Own unit',         desc: 'View own unit telemetry and position only' },
+  { label: 'Trigger duress',   desc: 'Activate the duress / panic alert' },
+  { label: 'Reports',          desc: 'Access operational and audit reports' },
+]
+
+const SECTIONS = [
+  { key: 'members',   label: 'Members',      countKey: 'members'   },
+  { key: 'devices',   label: 'Devices',      countKey: 'devices'   },
+  { key: 'vehicles',  label: 'Vehicles',     countKey: 'vehicles'  },
+  { key: 'geofences', label: 'Geofences',    countKey: 'geofences' },
+  { key: 'roles',     label: 'Roles & access', countKey: null      },
+]
+
+function sectionFromPath(pathname) {
+  if (pathname.includes('/settings/devices'))   return 'devices'
+  if (pathname.includes('/settings/vehicles'))  return 'vehicles'
+  if (pathname.includes('/settings/geofences')) return 'geofences'
+  if (pathname.includes('/settings/roles'))     return 'roles'
+  return 'members'
+}
+
+export default function OrgSettings() {
+  const [members,   setMembers]   = useState(mockMembers)
+  const [roles,     setRoles]     = useState(mockRoles)
+  const [devices,   setDevices]   = useState(mockDevices)
+  const [vehicles,  setVehicles]  = useState(mockVehicles)
+  const [geofences, setGeofences] = useState(mockGeofences)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const active   = sectionFromPath(location.pathname)
+
+  function handleInviteMember(newMember) {
+    setMembers(prev => [...prev, newMember])
+    navigate('/admin/settings/members')
+  }
+
+  const counts = {
+    members:   members.length,
+    devices:   devices.length,
+    vehicles:  vehicles.length,
+    geofences: geofences.length,
+  }
+
+  function handleSaveRole(updated) {
+    setRoles(prev => prev.map(r => r.id === updated.id ? updated : r))
+    navigate('/admin/settings/roles')
+  }
+  function handleCreateRole(newRole) {
+    setRoles(prev => [...prev, newRole])
+    navigate('/admin/settings/roles')
+  }
+  function handleCreateDevice(newDevice) {
+    setDevices(prev => [...prev, newDevice])
+    navigate('/admin/settings/devices')
+  }
+  function handleCreateVehicle(newVehicle) {
+    setVehicles(prev => [...prev, newVehicle])
+    navigate('/admin/settings/vehicles')
+  }
+  function handleCreateGeofence(newGeofence) {
+    setGeofences(prev => [...prev, newGeofence])
+    navigate('/admin/settings/geofences')
+  }
+
+  return (
+    <div className="org-settings">
+      <aside className="os-sidebar">
+        <span className="os-sidebar__heading">ORGANIZATION</span>
+        {SECTIONS.map(s => (
+          <button
+            key={s.key}
+            className={`os-sidebar__item${active === s.key ? ' active' : ''}`}
+            onClick={() => navigate(`/admin/settings/${s.key}`)}
+          >
+            <span className="os-sidebar__label">{s.label}</span>
+            {s.countKey != null && (
+              <span className={`os-sidebar__count${active === s.key ? ' active' : ''}`}>
+                {counts[s.countKey]}
+              </span>
+            )}
+          </button>
+        ))}
+      </aside>
+
+      <div className="os-content">
+        <Routes>
+          <Route index element={<Navigate to="members" replace />} />
+          <Route path="members"          element={<MembersSection members={members} />} />
+          <Route path="members/new"      element={<MemberInviteView onSave={handleInviteMember} />} />
+          <Route path="devices"          element={<DevicesSection devices={devices} />} />
+          <Route path="devices/new"      element={<DeviceCreateView onSave={handleCreateDevice} />} />
+          <Route path="vehicles"         element={<VehiclesSection vehicles={vehicles} />} />
+          <Route path="vehicles/new"     element={<VehicleCreateView onSave={handleCreateVehicle} />} />
+          <Route path="geofences"        element={<GeofencesSection geofences={geofences} />} />
+          <Route path="geofences/new"    element={<GeofenceCreateView onSave={handleCreateGeofence} />} />
+          <Route path="roles"            element={<RolesSection roles={roles} />} />
+          <Route path="roles/new"        element={<RoleCreateView onSave={handleCreateRole} />} />
+          <Route path="roles/:roleId"    element={<RoleEditView roles={roles} onSave={handleSaveRole} />} />
+        </Routes>
+      </div>
+    </div>
+  )
+}
+
+/* ── members ──────────────────────────────────────────────────── */
+function MembersSection({ members }) {
+  const navigate   = useNavigate()
+  const twoFaCount = members.filter(m => m.twoFactor).length
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Members</span>
+          <span className="os-section__meta">
+            {members.length} members · {twoFaCount} with two-factor enabled
+          </span>
+        </div>
+        <button className="os-action-btn" onClick={() => navigate('/admin/settings/members/new')}>+ Invite member</button>
+      </div>
+
+      <div className="os-table-wrap">
+        <table className="os-table">
+          <thead>
+            <tr>
+              <th>NAME / EMAIL</th>
+              <th>ROLE</th>
+              <th>2FA</th>
+              <th>LAST ACTIVE</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map(m => {
+              const statusMeta = MEMBER_STATUS_META[m.status]
+              const roleMeta   = ROLE_CHIP_META[m.role] ?? { color: '#66727A' }
+              return (
+                <tr key={m.id}>
+                  <td>
+                    <div className="os-member-cell">
+                      <Avatar name={m.name} role={m.role} />
+                      <div>
+                        <span className="os-member-name">{m.name}</span>
+                        <span className="os-member-email">{m.email}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <Chip
+                      label={m.role}
+                      color={roleMeta.color}
+                    />
+                  </td>
+                  <td>
+                    <Chip
+                      label={m.twoFactor ? 'ON' : 'OFF'}
+                      color={m.twoFactor ? '#37C2B8' : '#E0A63C'}
+                    />
+                  </td>
+                  <td className="os-td-mono">{m.lastActive}</td>
+                  <td>
+                    <Chip label={statusMeta.label} color={statusMeta.color} dot />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ── devices ──────────────────────────────────────────────────── */
+function DevicesSection({ devices }) {
+  const navigate    = useNavigate()
+  const onlineCount = devices.filter(d => d.gpsOnline).length
+  const latestFw    = '4.2.1'
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Devices</span>
+          <span className="os-section__meta">
+            {devices.length} devices · {onlineCount} online · telemetry + dual camera
+          </span>
+        </div>
+        <button className="os-action-btn" onClick={() => navigate('/admin/settings/devices/new')}>
+          + Provision device
+        </button>
+      </div>
+
+      <div className="os-table-wrap">
+        <table className="os-table">
+          <thead>
+            <tr>
+              <th>UNIT ID</th>
+              <th>IMEI</th>
+              <th>ASSIGNED TO</th>
+              <th>FIRMWARE</th>
+              <th>CAMERAS</th>
+              <th>STATUS</th>
+              <th>LAST CHECK-IN</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map(d => {
+              const camColor = d.cameras === '—' ? '#5D676C'
+                : d.cameras.startsWith('2') ? '#37C2B8'
+                : d.cameras.startsWith('1') ? '#E0A63C'
+                : '#66727A'
+              return (
+                <tr key={d.id}>
+                  <td className="os-td-mono os-td-id">{d.id}</td>
+                  <td className="os-td-mono os-td-imei">{d.imei}</td>
+                  <td>{d.assignedTo}</td>
+                  <td>
+                    <span
+                      className="os-td-mono"
+                      style={{ color: d.firmware === latestFw ? 'var(--adm-text-muted)' : '#E0A63C' }}
+                    >
+                      {d.firmware}
+                    </span>
+                  </td>
+                  <td>
+                    <Chip label={d.cameras} color={camColor} />
+                  </td>
+                  <td>
+                    <Chip
+                      label={d.gpsOnline ? 'ONLINE' : 'OFFLINE'}
+                      color={d.gpsOnline ? '#37C2B8' : '#66727A'}
+                    />
+                  </td>
+                  <td className="os-td-mono">{d.lastCheckin}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ── vehicles ─────────────────────────────────────────────────── */
+function VehiclesSection({ vehicles }) {
+  const navigate = useNavigate()
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Vehicles</span>
+          <span className="os-section__meta">
+            {vehicles.length} vehicles in the protective fleet
+          </span>
+        </div>
+        <button className="os-action-btn" onClick={() => navigate('/admin/settings/vehicles/new')}>
+          + Add vehicle
+        </button>
+      </div>
+
+      <div className="os-table-wrap">
+        <table className="os-table">
+          <thead>
+            <tr>
+              <th>UNIT</th>
+              <th>VEHICLE</th>
+              <th>PLATE</th>
+              <th>ARMOR</th>
+              <th>VIN</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vehicles.map(v => {
+              const meta = STATUS_META[v.status] ?? STATUS_META.offline
+              const armorColor = v.armor === 'B6 Armored' ? '#37C2B8'
+                : v.armor === 'B4 Armored' ? '#5AA9C2'
+                : '#66727A'
+              return (
+                <tr key={v.id}>
+                  <td>
+                    <div className="os-unit-cell">
+                      <span
+                        className="os-unit-dot"
+                        style={{ background: meta.color }}
+                      />
+                      <span className="os-td-mono os-td-id">{v.id}</span>
+                      <span className="os-unit-callsign">{v.callsign}</span>
+                    </div>
+                  </td>
+                  <td>{v.vehicle}</td>
+                  <td className="os-td-mono">{v.plate}</td>
+                  <td>
+                    <span style={{ color: armorColor, fontSize: 12 }}>{v.armor}</span>
+                  </td>
+                  <td className="os-td-mono os-td-vin">{v.vin}</td>
+                  <td>
+                    <Chip label={meta.label} color={meta.color} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ── geofences ────────────────────────────────────────────────── */
+function GeofencesSection({ geofences }) {
+  const navigate    = useNavigate()
+  const activeCount = geofences.filter(g => g.active).length
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Geofences</span>
+          <span className="os-section__meta">
+            {geofences.length} zones · safe zones, corridors and exclusion areas · {activeCount} active
+          </span>
+        </div>
+        <button className="os-action-btn" onClick={() => navigate('/admin/settings/geofences/new')}>
+          + New geofence
+        </button>
+      </div>
+
+      <div className="os-table-wrap">
+        <table className="os-table">
+          <thead>
+            <tr>
+              <th>NAME</th>
+              <th>TYPE</th>
+              <th>SIZE</th>
+              <th>LINKED UNITS</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {geofences.map(g => {
+              const typeMeta = GEO_TYPE_META[g.type] ?? { color: '#66727A' }
+              return (
+                <tr key={g.id}>
+                  <td className="os-geo-name">{g.name}</td>
+                  <td>
+                    <Chip label={g.type} color={typeMeta.color} />
+                  </td>
+                  <td className="os-td-mono" style={{ fontSize: 11 }}>{g.size}</td>
+                  <td className="os-td-mono" style={{ fontSize: 11 }}>{g.linkedUnits}</td>
+                  <td>
+                    <Chip
+                      label={g.active ? 'ACTIVE' : 'PAUSED'}
+                      color={g.active ? '#37C2B8' : '#66727A'}
+                    />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ── roles & access ───────────────────────────────────────────── */
+function RolesSection({ roles }) {
+  const navigate = useNavigate()
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Roles & access</span>
+          <span className="os-section__meta">
+            {roles.length} roles · least-privilege by default
+          </span>
+        </div>
+        <button className="os-action-btn" onClick={() => navigate('/admin/settings/roles/new')}>
+          + Custom role
+        </button>
+      </div>
+      <div className="os-roles">
+        {roles.map(role => (
+          <RoleCard
+            key={role.id}
+            role={role}
+            onEdit={() => navigate(`/admin/settings/roles/${role.id}`)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RoleCard({ role, onEdit }) {
+  return (
+    <div className="os-role-card">
+      <div className="os-role-card__header">
+        <span className="os-role-card__dot" style={{ background: role.color }} />
+        <span className="os-role-card__name" style={{ color: role.color }}>{role.name}</span>
+        <span className="os-role-card__count">
+          {role.memberCount} {role.memberCount === 1 ? 'member' : 'members'}
+        </span>
+        <button className="os-role-card__edit-btn" onClick={onEdit}>Edit →</button>
+      </div>
+      <p className="os-role-card__desc">{role.description}</p>
+      <div className="os-role-card__perms">
+        {role.permissions.map(p => <span key={p} className="os-perm-pill">{p}</span>)}
+      </div>
+    </div>
+  )
+}
+
+function RoleCreateView({ onSave }) {
+  const navigate = useNavigate()
+
+  const [name, setName]         = useState('')
+  const [desc, setDesc]         = useState('')
+  const [permissions, setPerms] = useState(new Set())
+  const [members, setMembers]   = useState([])
+  const [showPicker, setPicker] = useState(false)
+
+  const available = mockMembers.filter(m => !members.some(cm => cm.id === m.id))
+  const canCreate = name.trim().length > 0
+
+  function togglePerm(label) {
+    setPerms(prev => {
+      const next = new Set(prev)
+      next.has(label) ? next.delete(label) : next.add(label)
+      return next
+    })
+  }
+
+  function addMember(member) {
+    setMembers(prev => [...prev, member])
+    setPicker(false)
+  }
+
+  function removeMember(id) {
+    setMembers(prev => prev.filter(m => m.id !== id))
+  }
+
+  function handleCreate() {
+    if (!canCreate) return
+    onSave({
+      id:          `role-${Date.now()}`,
+      name:        name.trim(),
+      description: desc.trim() || 'Custom role.',
+      color:       '#66727A',
+      permissions: Array.from(permissions),
+      memberCount: members.length,
+    })
+  }
+
+  return (
+    <div className="os-section">
+      {/* ── header ── */}
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/roles')}>← ROLES</button>
+        <div className="re-header__title">
+          <span className="re-header__name" style={{ color: name ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
+            {name || 'New role'}
+          </span>
+        </div>
+        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>
+          Create role
+        </button>
+      </div>
+
+      {/* ── role details first — name required ── */}
+      <div className="re-block">
+        <span className="re-block__label">ROLE DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">
+              Name <span className="re-required">*</span>
+            </label>
+            <input
+              className="re-field-input"
+              placeholder="e.g. Supervisor"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Description</label>
+            <input
+              className="re-field-input"
+              placeholder="What this role can do…"
+              value={desc}
+              onChange={e => setDesc(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── feature access ── */}
+      <div className="re-block">
+        <span className="re-block__label">FEATURE ACCESS</span>
+        <div className="re-perm-grid">
+          {ALL_PERMISSIONS.map(p => {
+            const active = permissions.has(p.label)
+            return (
+              <button
+                key={p.label}
+                className={`re-perm-toggle${active ? ' active' : ''}`}
+                onClick={() => togglePerm(p.label)}
+              >
+                <span className="re-perm-toggle__check">
+                  {active && <CheckIcon />}
+                </span>
+                <div>
+                  <span className="re-perm-toggle__name">{p.label}</span>
+                  <span className="re-perm-toggle__desc">{p.desc}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── members ── */}
+      <div className="re-block">
+        <div className="re-block__header">
+          <span className="re-block__label">MEMBERS</span>
+          <div className="re-picker-wrap">
+            <button
+              className="os-action-btn"
+              onClick={() => setPicker(v => !v)}
+              disabled={available.length === 0}
+            >
+              + Add member
+            </button>
+            {showPicker && (
+              <>
+                <div className="re-picker-backdrop" onClick={() => setPicker(false)} />
+                <div className="re-picker">
+                  {available.map(m => (
+                    <button key={m.id} className="re-picker__item" onClick={() => addMember(m)}>
+                      <Avatar name={m.name} role={m.role} />
+                      <div>
+                        <span className="re-picker__name">{m.name}</span>
+                        <span className="re-picker__role">Currently: {m.role}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {members.length === 0 ? (
+          <span className="re-members-empty">No members assigned yet.</span>
+        ) : (
+          <div className="re-members">
+            {members.map(m => {
+              const sm = MEMBER_STATUS_META[m.status]
+              return (
+                <div key={m.id} className="re-member-row">
+                  <Avatar name={m.name} role={m.role} />
+                  <div className="re-member-info">
+                    <span className="re-member-name">{m.name}</span>
+                    <span className="re-member-email">{m.email}</span>
+                  </div>
+                  <Chip label={sm.label} color={sm.color} dot />
+                  <button className="re-remove-btn" onClick={() => removeMember(m.id)}>
+                    Remove
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RoleEditView({ roles, onSave }) {
+  const { roleId }  = useParams()
+  const navigate    = useNavigate()
+  const role        = roles.find(r => r.id === roleId)
+
+  const [name, setName]         = useState(role?.name ?? '')
+  const [desc, setDesc]         = useState(role?.description ?? '')
+  const [permissions, setPerms] = useState(new Set(role?.permissions ?? []))
+  const [members, setMembers]   = useState(() => mockMembers.filter(m => role ? m.role === role.name : false))
+  const [showPicker, setPicker] = useState(false)
+
+  if (!role) {
+    return (
+      <div className="os-section">
+        <div className="re-header">
+          <button className="re-back" onClick={() => navigate('/admin/settings/roles')}>← ROLES</button>
+        </div>
+        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 12, color: 'var(--adm-text-dim)' }}>
+          Role not found.
+        </span>
+      </div>
+    )
+  }
+
+  const available = mockMembers.filter(m => !members.some(cm => cm.id === m.id))
+
+  function togglePerm(label) {
+    setPerms(prev => {
+      const next = new Set(prev)
+      next.has(label) ? next.delete(label) : next.add(label)
+      return next
+    })
+  }
+
+  function addMember(member) {
+    setMembers(prev => [...prev, member])
+    setPicker(false)
+  }
+
+  function removeMember(id) {
+    setMembers(prev => prev.filter(m => m.id !== id))
+  }
+
+  function handleSave() {
+    onSave({
+      ...role,
+      name,
+      description: desc,
+      permissions: Array.from(permissions),
+      memberCount: members.length,
+    })
+  }
+
+  return (
+    <div className="os-section">
+      {/* ── header ── */}
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/roles')}>← ROLES</button>
+        <div className="re-header__title">
+          <span className="re-header__dot" style={{ background: role.color }} />
+          <span className="re-header__name" style={{ color: role.color }}>{name}</span>
+        </div>
+        <button className="re-save" onClick={handleSave}>Save changes</button>
+      </div>
+
+      {/* ── role details ── */}
+      <div className="re-block">
+        <span className="re-block__label">ROLE DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Name</label>
+            <input
+              className="re-field-input"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Description</label>
+            <input
+              className="re-field-input"
+              value={desc}
+              onChange={e => setDesc(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── feature access ── */}
+      <div className="re-block">
+        <span className="re-block__label">FEATURE ACCESS</span>
+        <div className="re-perm-grid">
+          {ALL_PERMISSIONS.map(p => {
+            const active = permissions.has(p.label)
+            return (
+              <button
+                key={p.label}
+                className={`re-perm-toggle${active ? ' active' : ''}`}
+                onClick={() => togglePerm(p.label)}
+              >
+                <span className="re-perm-toggle__check">
+                  {active && <CheckIcon />}
+                </span>
+                <div>
+                  <span className="re-perm-toggle__name">{p.label}</span>
+                  <span className="re-perm-toggle__desc">{p.desc}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── members ── */}
+      <div className="re-block">
+        <div className="re-block__header">
+          <span className="re-block__label">MEMBERS</span>
+          <div className="re-picker-wrap">
+            <button
+              className="os-action-btn"
+              onClick={() => setPicker(v => !v)}
+              disabled={available.length === 0}
+            >
+              + Add member
+            </button>
+            {showPicker && (
+              <>
+                <div className="re-picker-backdrop" onClick={() => setPicker(false)} />
+                <div className="re-picker">
+                  {available.map(m => (
+                    <button key={m.id} className="re-picker__item" onClick={() => addMember(m)}>
+                      <Avatar name={m.name} role={m.role} />
+                      <div>
+                        <span className="re-picker__name">{m.name}</span>
+                        <span className="re-picker__role">Currently: {m.role}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {members.length === 0 ? (
+          <span className="re-members-empty">No members assigned to this role.</span>
+        ) : (
+          <div className="re-members">
+            {members.map(m => {
+              const sm = MEMBER_STATUS_META[m.status]
+              return (
+                <div key={m.id} className="re-member-row">
+                  <Avatar name={m.name} role={m.role} />
+                  <div className="re-member-info">
+                    <span className="re-member-name">{m.name}</span>
+                    <span className="re-member-email">{m.email}</span>
+                  </div>
+                  <Chip label={sm.label} color={sm.color} dot />
+                  <button className="re-remove-btn" onClick={() => removeMember(m.id)}>
+                    Remove
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── member invite ────────────────────────────────────────────── */
+const INVITE_ROLES = ['Admin', 'Operator', 'Agent', 'Read-only']
+
+function MemberInviteView({ onSave }) {
+  const navigate = useNavigate()
+  const [name,  setName]  = useState('')
+  const [email, setEmail] = useState('')
+  const [role,  setRole]  = useState('Operator')
+
+  const canInvite = name.trim().length > 0 && email.trim().includes('@')
+
+  function handleInvite() {
+    if (!canInvite) return
+    onSave({
+      id:         `m${Date.now()}`,
+      name:       name.trim(),
+      email:      email.trim().toLowerCase(),
+      role,
+      twoFactor:  false,
+      status:     'offline',
+      lastActive: 'Invited',
+    })
+  }
+
+  return (
+    <div className="os-section">
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/members')}>← MEMBERS</button>
+        <div className="re-header__title">
+          <span className="re-header__name" style={{ color: name ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
+            {name || 'Invite member'}
+          </span>
+        </div>
+        <button className="re-save" onClick={handleInvite} disabled={!canInvite}>Send invite</button>
+      </div>
+
+      <div className="re-block">
+        <span className="re-block__label">MEMBER DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Full name <span className="re-required">*</span></label>
+            <input className="re-field-input" placeholder="e.g. Jordan Reyes" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Email address <span className="re-required">*</span></label>
+            <input className="re-field-input" type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Role</label>
+            <PillGroup
+              options={INVITE_ROLES}
+              value={role}
+              onChange={setRole}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── device create ────────────────────────────────────────────── */
+function DeviceCreateView({ onSave }) {
+  const navigate = useNavigate()
+  const [unitId,      setUnitId]      = useState('')
+  const [imei,        setImei]        = useState('')
+  const [assignedTo,  setAssignedTo]  = useState('')
+  const [firmware,    setFirmware]    = useState('')
+  const [gpsOnline,   setGpsOnline]   = useState(true)
+
+  const canCreate = unitId.trim().length > 0
+
+  function handleCreate() {
+    if (!canCreate) return
+    onSave({
+      id:          unitId.trim().toUpperCase(),
+      imei:        imei.trim() || '—',
+      assignedTo:  assignedTo.trim() || '—',
+      firmware:    firmware.trim() || '—',
+      gpsOnline,
+      cameras:     '—',
+      lastCheckin: 'Just now',
+    })
+  }
+
+  return (
+    <div className="os-section">
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/devices')}>← DEVICES</button>
+        <div className="re-header__title">
+          <span className="re-header__name" style={{ color: unitId ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
+            {unitId || 'New device'}
+          </span>
+        </div>
+        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Provision device</button>
+      </div>
+
+      <div className="re-block">
+        <span className="re-block__label">DEVICE DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Unit ID <span className="re-required">*</span></label>
+            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-06" value={unitId} onChange={e => setUnitId(e.target.value)} autoFocus />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">IMEI</label>
+            <input className="re-field-input re-field-input--mono" placeholder="15-digit IMEI" value={imei} onChange={e => setImei(e.target.value)} maxLength={15} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Assigned To</label>
+            <input className="re-field-input" placeholder="Principal · vehicle" value={assignedTo} onChange={e => setAssignedTo(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Firmware</label>
+            <input className="re-field-input re-field-input--mono" placeholder="e.g. 4.2.1" value={firmware} onChange={e => setFirmware(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Status</label>
+            <PillGroup
+              options={['ONLINE', 'OFFLINE']}
+              value={gpsOnline ? 'ONLINE' : 'OFFLINE'}
+              onChange={v => setGpsOnline(v === 'ONLINE')}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── vehicle create ───────────────────────────────────────────── */
+function VehicleCreateView({ onSave }) {
+  const navigate = useNavigate()
+  const [unitId,  setUnitId]  = useState('')
+  const [vehicle, setVehicle] = useState('')
+  const [plate,   setPlate]   = useState('')
+  const [armor,   setArmor]   = useState('Soft skin')
+  const [vin,     setVin]     = useState('')
+
+  const canCreate = unitId.trim().length > 0
+
+  function handleCreate() {
+    if (!canCreate) return
+    onSave({
+      id:       unitId.trim().toUpperCase(),
+      callsign: '—',
+      vehicle:  vehicle.trim() || '—',
+      plate:    plate.trim() || '—',
+      armor,
+      vin:      vin.trim() || '—',
+      status:   'offline',
+    })
+  }
+
+  return (
+    <div className="os-section">
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/vehicles')}>← VEHICLES</button>
+        <div className="re-header__title">
+          <span className="re-header__name" style={{ color: unitId ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
+            {unitId ? `${unitId}${vehicle ? ` · ${vehicle}` : ''}` : 'New vehicle'}
+          </span>
+        </div>
+        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Add vehicle</button>
+      </div>
+
+      <div className="re-block">
+        <span className="re-block__label">VEHICLE DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Unit ID <span className="re-required">*</span></label>
+            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-06" value={unitId} onChange={e => setUnitId(e.target.value)} autoFocus />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Make / Model</label>
+            <input className="re-field-input" placeholder="e.g. Cadillac Escalade ESV" value={vehicle} onChange={e => setVehicle(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Plate</label>
+            <input className="re-field-input re-field-input--mono" placeholder="License plate" value={plate} onChange={e => setPlate(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Protection level</label>
+            <PillGroup
+              options={['B6 Armored', 'B4 Armored', 'Soft skin']}
+              value={armor}
+              onChange={setArmor}
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">VIN</label>
+            <input className="re-field-input re-field-input--mono" placeholder="17-character VIN" value={vin} onChange={e => setVin(e.target.value)} maxLength={17} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── geofence create ──────────────────────────────────────────── */
+function GeofenceCreateView({ onSave }) {
+  const navigate = useNavigate()
+  const [name,        setName]        = useState('')
+  const [type,        setType]        = useState('SAFE ZONE')
+  const [size,        setSize]        = useState('')
+  const [linkedUnits, setLinkedUnits] = useState('')
+
+  const canCreate = name.trim().length > 0
+
+  function handleCreate() {
+    if (!canCreate) return
+    onSave({
+      id:          `g${Date.now()}`,
+      name:        name.trim(),
+      type,
+      size:        size.trim() || '—',
+      linkedUnits: linkedUnits.trim() || 'All units',
+      active:      true,
+    })
+  }
+
+  return (
+    <div className="os-section">
+      <div className="re-header">
+        <button className="re-back" onClick={() => navigate('/admin/settings/geofences')}>← GEOFENCES</button>
+        <div className="re-header__title">
+          <span className="re-header__name" style={{ color: name ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
+            {name || 'New geofence'}
+          </span>
+        </div>
+        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Create zone</button>
+      </div>
+
+      <div className="re-block">
+        <span className="re-block__label">ZONE DETAILS</span>
+        <div className="re-fields">
+          <div className="re-field-group">
+            <label className="re-field-label">Zone name <span className="re-required">*</span></label>
+            <input className="re-field-input" placeholder="e.g. Residence — Highland Park" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Type</label>
+            <PillGroup
+              options={['SAFE ZONE', 'CORRIDOR', 'EXCLUSION', 'WAYPOINT']}
+              value={type}
+              onChange={setType}
+            />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Size</label>
+            <input className="re-field-input re-field-input--mono" placeholder="e.g. 400 m radius" value={size} onChange={e => setSize(e.target.value)} />
+          </div>
+          <div className="re-field-group">
+            <label className="re-field-label">Linked units</label>
+            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-01, SP-02 or All units" value={linkedUnits} onChange={e => setLinkedUnits(e.target.value)} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── shared helpers ───────────────────────────────────────────── */
+function PillGroup({ options, value, onChange }) {
+  return (
+    <div className="re-pill-group">
+      {options.map(opt => (
+        <button
+          key={opt}
+          type="button"
+          className={`re-pill${value === opt ? ' active' : ''}`}
+          onClick={() => onChange(opt)}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden>
+      <path d="M1 4L3.5 6.5L9 1" stroke="#0A0E10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function Chip({ label, color, dot }) {
+  return (
+    <span
+      className="os-chip"
+      style={{
+        color,
+        background: `${color}18`,
+        borderColor: `${color}44`,
+      }}
+    >
+      {dot && (
+        <span
+          className="os-chip__dot"
+          style={{ background: color }}
+        />
+      )}
+      {label}
+    </span>
+  )
+}
+
+const AVATAR_PALETTES = [
+  { bg: 'rgba(55,194,184,0.12)', color: '#37C2B8' },
+  { bg: 'rgba(90,169,194,0.12)', color: '#5AA9C2' },
+  { bg: 'rgba(102,114,122,0.15)', color: '#7D8990' },
+  { bg: 'rgba(224,166,60,0.12)',  color: '#E0A63C' },
+]
+
+function Avatar({ name, role }) {
+  const parts = name.trim().split(' ')
+  const initials = ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase()
+  const palette = (role === 'Owner' || role === 'Admin')
+    ? AVATAR_PALETTES[0]
+    : AVATAR_PALETTES[2]
+  return (
+    <span
+      className="os-avatar"
+      style={{ background: palette.bg, color: palette.color }}
+    >
+      {initials}
+    </span>
+  )
+}
