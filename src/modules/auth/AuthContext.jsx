@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js'
 import { userPool } from './cognito'
+import { apiUrl } from '../../shared/utils/api'
 
 const AuthContext = createContext(null)
 
@@ -25,7 +26,7 @@ export function AuthProvider({ children }) {
 
   async function provision(attrs) {
     try {
-      await fetch('/api/auth/provision', {
+      await fetch(apiUrl('/api/auth/provision'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

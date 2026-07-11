@@ -5,6 +5,7 @@ import { mockMembers, mockDevices, mockVehicles, mockGeofences, mockRoles } from
 import { useAccounts } from '../contexts/AccountsContext'
 import { useAuth } from '../../auth/AuthContext'
 import { humanizeTime } from '../../../shared/utils/time'
+import { apiUrl } from '../../../shared/utils/api'
 
 const STATUS_META = {
   normal:  { color: '#37C2B8', label: 'SECURE'  },
@@ -104,8 +105,8 @@ export default function OrgSettings() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/users').then(r => r.json()),
-      fetch('/api/invitations').then(r => r.json()),
+      fetch(apiUrl('/api/users')).then(r => r.json()),
+      fetch(apiUrl('/api/invitations')).then(r => r.json()),
     ]).then(([u, i]) => {
       setDbUsers(Array.isArray(u) ? u : [])
       setDbInvitations(Array.isArray(i) ? i : [])
@@ -922,7 +923,7 @@ function MemberEditView({ members, loading, onSave }) {
   useEffect(() => {
     if (!memberId) return
     setLogsLoading(true)
-    fetch(`/api/users/${memberId}/logs`)
+    fetch(apiUrl(`/api/users/${memberId}/logs`))
       .then(r => r.json())
       .then(data => { setMemberLogs(Array.isArray(data) ? data : []); setLogsLoading(false) })
       .catch(() => setLogsLoading(false))
@@ -975,7 +976,7 @@ function MemberEditView({ members, loading, onSave }) {
 
   async function handleSave() {
     if (!canSave) return
-    const res = await fetch(`/api/users/${member.id}`, {
+    const res = await fetch(apiUrl(`/api/users/${member.id}`), {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
@@ -1268,7 +1269,7 @@ function MemberInviteView({ onSave }) {
     setBusy(true)
     setError('')
     try {
-      const res  = await fetch('/api/users', {
+      const res  = await fetch(apiUrl('/api/users'), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { apiUrl } from '../../../shared/utils/api'
 import { humanizeTime } from '../../../shared/utils/time'
 import './LogsPage.css'
 
@@ -46,7 +47,7 @@ export default function LogsPage() {
   const [loading,     setLoading]     = useState(true)
 
   useEffect(() => {
-    fetch('/api/logs')
+    fetch(apiUrl('/api/logs'))
       .then(r => r.json())
       .then(data => { setLogs(data); setLoading(false) })
       .catch(() => setLoading(false))

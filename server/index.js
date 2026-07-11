@@ -28,7 +28,12 @@ const cognito = new CognitoIdentityProviderClient({
   },
 })
 
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean),
+}))
 app.use(express.json())
 
 // Called after every successful Cognito login to provision the user in our DB
