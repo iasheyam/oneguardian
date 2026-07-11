@@ -4,7 +4,7 @@ import './TopBar.css'
 
 function pad(n) { return String(n).padStart(2, '0') }
 
-export default function TopBar({ crumb, fleetStatus }) {
+export default function TopBar({ crumb, fleetStatus, onStatusClick }) {
   const navigate      = useNavigate()
   const [now, setNow] = useState(new Date())
 
@@ -33,20 +33,23 @@ export default function TopBar({ crumb, fleetStatus }) {
       </nav>
 
       <div className="top-bar__right">
-        <div
-          className="status-pill"
+        <button
+          className={`status-pill${onStatusClick ? ' status-pill--clickable' : ''}`}
           style={{
             color: fleetStatus.color,
             borderColor: `color-mix(in srgb, ${fleetStatus.color} 35%, transparent)`,
             background:   `color-mix(in srgb, ${fleetStatus.color} 10%, transparent)`,
           }}
+          onClick={onStatusClick}
+          disabled={!onStatusClick}
+          title={onStatusClick ? 'View active alerts' : undefined}
         >
           <span
             className={`status-pill__dot${isAlert ? ' blink' : ''}`}
             style={{ background: fleetStatus.color, boxShadow: `0 0 8px ${fleetStatus.color}` }}
           />
           <span className="status-pill__text">{fleetStatus.text}</span>
-        </div>
+        </button>
 
         <div className="top-bar__clock">
           <span className="clock-zulu">{zulu}</span>

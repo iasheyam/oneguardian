@@ -15,19 +15,6 @@ export default function UnitList({ units }) {
 
   return (
     <div className="unit-list-page">
-      {vehicles.length > 0 && (
-        <section className="ul-section">
-          <div className="ul-section__header">
-            <span className="ul-section__label">VEHICLES</span>
-            <span className="ul-section__line" />
-            <span className="ul-section__count">{vehicles.length}</span>
-          </div>
-          <div className="ul-grid">
-            {vehicles.map(u => <UnitCard key={u.id} unit={u} />)}
-          </div>
-        </section>
-      )}
-
       {people.length > 0 && (
         <section className="ul-section">
           <div className="ul-section__header">
@@ -37,6 +24,19 @@ export default function UnitList({ units }) {
           </div>
           <div className="ul-grid">
             {people.map(u => <UnitCard key={u.id} unit={u} />)}
+          </div>
+        </section>
+      )}
+
+      {vehicles.length > 0 && (
+        <section className="ul-section">
+          <div className="ul-section__header">
+            <span className="ul-section__label">VEHICLES</span>
+            <span className="ul-section__line" />
+            <span className="ul-section__count">{vehicles.length}</span>
+          </div>
+          <div className="ul-grid">
+            {vehicles.map(u => <UnitCard key={u.id} unit={u} />)}
           </div>
         </section>
       )}

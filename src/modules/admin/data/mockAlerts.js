@@ -1,0 +1,21 @@
+export const mockAlerts = [
+  {
+    id: 'al-001',
+    level: 'duress',
+    type: 'panic',
+    unitId: 'SP-04',
+    callsign: 'HARRIER',
+    agent: 'J. Mora',
+    vehicle: 'BMW 540i',
+    armorLevel: 'Soft skin',
+    plate: '2BCV770',
+    location: 'Route A · Near I-35W Exit 21',
+    speed: 73,
+    heading: 'East',
+    time: '14:22',
+    timeUtc: '20:22Z',
+    status: 'active',
+    notes: '',
+    actionLog: [],
+  },
+]

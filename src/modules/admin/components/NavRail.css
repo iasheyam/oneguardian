@@ -71,3 +71,18 @@
   font-weight: 600;
   letter-spacing: 0.09em;
 }
+
+.nav-rail__footer {
+  width: 100%;
+  padding: 0 6px 4px;
+}
+
+.nav-item--logout {
+  color: var(--adm-text-muted);
+}
+
+.nav-item--logout:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  border-color: transparent;
+}

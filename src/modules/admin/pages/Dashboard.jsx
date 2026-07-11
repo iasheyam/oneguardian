@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Map, { Marker, NavigationControl, AttributionControl } from 'react-map-gl/mapbox'
+import Map, { Marker, Popup, NavigationControl, AttributionControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import './Dashboard.css'
 
@@ -21,16 +21,18 @@ const FILTER_DEFS = [
 ]
 
 const INITIAL_VIEW = {
-  longitude: -96.815,
-  latitude:  32.835,
-  zoom:      11.2,
+  longitude: -90.5069,
+  latitude:  14.5980,
+  zoom:      12.5,
 }
 
 export default function Dashboard({ units }) {
   const [filter,     setFilter]     = useState('all')
   const [search,     setSearch]     = useState('')
   const [selectedId, setSelectedId] = useState(units[0]?.id ?? null)
+  const [popupId,    setPopupId]    = useState(null)
   const mapRef = useRef(null)
+  const navigate = useNavigate()
 
   const counts = useMemo(() => ({
     total:   units.length,
@@ -62,6 +64,7 @@ export default function Dashboard({ units }) {
 
   function selectUnit(id) {
     setSelectedId(id)
+    setPopupId(id)
     const unit = units.find(u => u.id === id)
     if (unit && mapRef.current) {
       mapRef.current.flyTo({
@@ -200,21 +203,75 @@ export default function Dashboard({ units }) {
                       borderColor: `${meta.color}66`,
                     }}
                   >
-                    {unit.id} · {unit.status === 'offline' ? '—' : `${unit.speed} MPH`}
+                    {unit.id} · {unit.callsign}
                   </span>
                 </div>
               </Marker>
             )
           })}
-        </Map>
 
-        {/* selected unit info overlay */}
-        {selected && (
-          <div className="map-selected-info">
-            <span className="map-selected-info__id">{selected.id} · {selected.callsign}</span>
-            <span className="map-selected-info__loc">{selected.location}</span>
-          </div>
-        )}
+          {popupId && (() => {
+            const unit = units.find(u => u.id === popupId)
+            if (!unit) return null
+            const meta = STATUS_META[unit.status] ?? STATUS_META.offline
+            return (
+              <Popup
+                longitude={unit.lng}
+                latitude={unit.lat}
+                anchor="bottom"
+                offset={22}
+                closeOnClick={false}
+                onClose={() => setPopupId(null)}
+                className="unit-popup"
+              >
+                <div className="upu">
+                  <div className="upu-head">
+                    <span className="upu-dot" style={{ background: meta.color, boxShadow: `0 0 6px ${meta.color}88` }} />
+                    <span className="upu-id">{unit.id} · {unit.callsign}</span>
+                    <span className="upu-chip" style={{ color: meta.color, borderColor: `${meta.color}44`, background: `${meta.color}18` }}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <div className="upu-rows">
+                    <div className="upu-row">
+                      <span className="upu-key">PRINCIPAL</span>
+                      <span className="upu-val">{unit.principal}</span>
+                    </div>
+                    {unit.agent && unit.agent !== '—' && (
+                      <div className="upu-row">
+                        <span className="upu-key">AGENT</span>
+                        <span className="upu-val">{unit.agent}</span>
+                      </div>
+                    )}
+                    {unit.vehicle && (
+                      <div className="upu-row">
+                        <span className="upu-key">VEHICLE</span>
+                        <span className="upu-val">{unit.vehicle}</span>
+                      </div>
+                    )}
+                    <div className="upu-row">
+                      <span className="upu-key">LOCATION</span>
+                      <span className="upu-val">{unit.location}</span>
+                    </div>
+                    <div className="upu-row">
+                      <span className="upu-key">SPEED</span>
+                      <span className="upu-val" style={{ color: unit.status === 'offline' ? '#66727A' : undefined }}>
+                        {unit.status === 'offline' ? 'NO SIGNAL' : `${unit.speed} KPH`}
+                      </span>
+                    </div>
+                    <div className="upu-row">
+                      <span className="upu-key">UPDATED</span>
+                      <span className="upu-val">{unit.lastUpdated} ago</span>
+                    </div>
+                  </div>
+                  <button className="upu-open" onClick={() => navigate(`/admin/unit/${unit.id}`)}>
+                    OPEN DETAIL →
+                  </button>
+                </div>
+              </Popup>
+            )
+          })()}
+        </Map>
       </div>
     </div>
   )

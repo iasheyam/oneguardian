@@ -1,25 +1,29 @@
-import { useMemo } from 'react'
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAccounts } from '../contexts/AccountsContext'
 import NavRail from './NavRail'
 import TopBar from './TopBar'
+import AlertModal from './AlertModal'
 import Dashboard from '../pages/Dashboard'
 import UnitList from '../pages/UnitList'
 import UnitDetail from '../pages/UnitDetail'
 import OrgSettings from '../pages/OrgSettings'
+import LogsPage from '../pages/LogsPage'
 import { FleetGroups, FleetSubgroups, FleetVehicles } from '../pages/Fleets'
 import { AccountList, AccountDetail, GroupDetail } from '../pages/Accounts'
 import Feed from '../pages/Feed'
 import { mockFleets } from '../data/mockFleets'
 import { mockUnits }  from '../data/mockUnits'
+import { mockAlerts as seedAlerts } from '../data/mockAlerts'
 import './AdminShell.css'
 
 const NAV_ROUTES = {
-  dashboard: '/admin',
+  dashboard: '/admin/ops',
   unit:      '/admin/unit',
   feed:      '/admin/feed',
   accounts:  '/admin/accounts',
   fleet:     '/admin/fleets',
+  logs:      '/admin/logs',
   admin:     '/admin/settings',
 }
 
@@ -32,11 +36,13 @@ const SETTINGS_SECTION_LABELS = {
 }
 
 function screenFromPath(pathname) {
-  if (pathname.startsWith('/admin/unit')) return 'unit'
-  if (pathname.startsWith('/admin/feed'))      return 'feed'
+  if (pathname.startsWith('/admin/unit'))     return 'unit'
+  if (pathname.startsWith('/admin/feed'))     return 'feed'
   if (pathname.startsWith('/admin/accounts')) return 'accounts'
   if (pathname.startsWith('/admin/fleets'))   return 'fleet'
+  if (pathname.startsWith('/admin/logs'))     return 'logs'
   if (pathname.startsWith('/admin/settings')) return 'admin'
+  if (pathname.startsWith('/admin/ops'))      return 'dashboard'
   return 'dashboard'
 }
 
@@ -46,13 +52,38 @@ export default function AdminShell() {
   const screen    = screenFromPath(location.pathname)
   const { accounts } = useAccounts()
 
+  // ── alert state ────────────────────────────────────────────
+  const [alerts,    setAlerts]    = useState(seedAlerts)
+  const [alertOpen, setAlertOpen] = useState(false)
+
+  const activeAlerts = alerts.filter(a => a.status === 'active')
+  const hasDuress    = activeAlerts.some(a => a.level === 'duress')
+
+  function handleAlertAction(alertId, entry) {
+    setAlerts(p => p.map(a => a.id !== alertId ? a : {
+      ...a, actionLog: [...a.actionLog, entry],
+    }))
+  }
+  function handleAlertFalseAlarm(alertId) {
+    setAlerts(p => p.map(a => a.id !== alertId ? a : { ...a, status: 'false_alarm' }))
+    const remaining = activeAlerts.filter(a => a.id !== alertId)
+    if (remaining.length === 0) setAlertOpen(false)
+  }
+  function handleAlertNotes(alertId, notes) {
+    setAlerts(p => p.map(a => a.id !== alertId ? a : { ...a, notes }))
+  }
+
   const fleetStatus = useMemo(() => {
-    const hasDuress = mockUnits.some(u => u.status === 'duress')
-    const warnCount = mockUnits.filter(u => u.status === 'warning').length
-    if (hasDuress) return { level: 'duress',  text: '1 DURESS ACTIVE',   color: '#F2495B' }
-    if (warnCount) return { level: 'warning', text: `${warnCount} WARNING`, color: '#E0A63C' }
-    return               { level: 'secure',  text: 'ALL SECURE',          color: '#37C2B8' }
-  }, [])
+    const duressCount = activeAlerts.filter(a => a.level === 'duress').length
+    const unitWarn    = mockUnits.filter(u => u.status === 'warning').length
+    const warnCount   = activeAlerts.filter(a => a.level === 'warning').length + unitWarn
+    if (duressCount > 0)
+      return { level: 'duress',  text: `${duressCount} DURESS ACTIVE`, color: '#F2495B' }
+    if (warnCount > 0)
+      return { level: 'warning', text: `${warnCount} WARNING${warnCount > 1 ? 'S' : ''}`, color: '#E0A63C' }
+    return { level: 'secure', text: 'ALL SECURE', color: '#37C2B8' }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAlerts.length, activeAlerts.map(a => a.level + a.status).join()])
 
   const crumb = useMemo(() => {
     const path = location.pathname
@@ -162,10 +193,15 @@ export default function AdminShell() {
     <div className="admin-shell">
       <NavRail screen={screen} onNav={key => navigate(NAV_ROUTES[key])} />
       <div className="admin-body">
-        <TopBar crumb={crumb} fleetStatus={fleetStatus} />
+        <TopBar
+          crumb={crumb}
+          fleetStatus={fleetStatus}
+          onStatusClick={activeAlerts.length > 0 ? () => setAlertOpen(true) : undefined}
+        />
         <main className="admin-content">
           <Routes>
-            <Route path="/"          element={<Dashboard units={mockUnits} />} />
+            <Route path="/"          element={<Navigate to="/admin/ops" replace />} />
+            <Route path="/ops"       element={<Dashboard units={mockUnits} />} />
             <Route path="/unit"      element={<UnitList   units={mockUnits} />} />
             <Route path="/unit/:id"  element={<UnitDetail units={mockUnits} />} />
             <Route path="/feed"                                                    element={<Feed />} />
@@ -175,11 +211,22 @@ export default function AdminShell() {
             <Route path="/fleets"                          element={<FleetGroups />} />
             <Route path="/fleets/:fleetId"               element={<FleetSubgroups />} />
             <Route path="/fleets/:fleetId/:subgroupId"   element={<FleetVehicles />} />
+            <Route path="/logs"        element={<LogsPage />} />
             <Route path="/settings/*" element={<OrgSettings />} />
             <Route path="*"          element={<AdminStub />} />
           </Routes>
         </main>
       </div>
+
+      {alertOpen && activeAlerts.length > 0 && (
+        <AlertModal
+          alerts={activeAlerts}
+          onAction={handleAlertAction}
+          onFalseAlarm={handleAlertFalseAlarm}
+          onAcknowledge={() => setAlertOpen(false)}
+          onUpdateNotes={handleAlertNotes}
+        />
+      )}
     </div>
   )
 }
