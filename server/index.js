@@ -13,9 +13,12 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider'
 import { db } from '../db/index.js'
 import { users, invitations, employeeProfiles, activityLogs } from '../db/schema/users.js'
-import { eq, and, or, getTableColumns, desc } from 'drizzle-orm'
+import { accounts, principals, vehicles, groups, groupMembers, devices } from '../db/schema/accounts.js'
+import { eq, and, or, getTableColumns, desc, inArray } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { trackEvent } from './trackEvent.js'
+import { startTraccar, getPositionCache, addSseClient, removeSseClient, fetchTraccarDevices, fetchTraccarPositions, createTraccarDevice, deleteTraccarDevice } from './traccar.js'
+import { randomUUID } from 'node:crypto'
 
 const app  = express()
 const PORT = process.env.PORT || 3001
@@ -235,6 +238,30 @@ app.get('/api/users', async (req, res) => {
   }
 })
 
+app.post('/api/invitations/:id/resend', async (req, res) => {
+  try {
+    const [invitation] = await db.select().from(invitations).where(eq(invitations.id, req.params.id)).limit(1)
+    if (!invitation) return res.status(404).json({ error: 'Invitation not found.' })
+
+    await cognito.send(new AdminCreateUserCommand({
+      UserPoolId:    process.env.COGNITO_USER_POOL_ID,
+      Username:      invitation.email,
+      MessageAction: 'RESEND',
+    }))
+
+    trackEvent({
+      event:       'user.invite_sent',
+      description: `Invitation resent to ${invitation.name} (${invitation.email})`,
+      metadata:    { email: invitation.email, role: invitation.role, resend: true },
+    })
+
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('Resend invite error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.get('/api/invitations', async (req, res) => {
   try {
     const result = await db.select().from(invitations).where(eq(invitations.status, 'pending'))
@@ -321,4 +348,317 @@ app.get('/api/logs', async (req, res) => {
   }
 })
 
-app.listen(PORT, () => console.log(`API server → http://localhost:${PORT}`))
+/* ── accounts helpers ─────────────────────────────────────────── */
+function serializeDevice(d) {
+  return {
+    id: d.id, name: d.name, type: d.type, model: d.model, serial: d.serial,
+    imei: d.imei, firmware: d.firmware, status: d.status, traccarDeviceId: d.traccarDeviceId,
+  }
+}
+
+async function buildAccount(account) {
+  const id = account.id
+  const ps  = await db.select().from(principals).where(eq(principals.accountId, id))
+  const vs  = await db.select().from(vehicles).where(eq(vehicles.accountId, id))
+  const gs  = await db.select().from(groups).where(eq(groups.accountId, id))
+  const gms = gs.length
+    ? await db.select().from(groupMembers).where(inArray(groupMembers.groupId, gs.map(g => g.id)))
+    : []
+
+  const devConditions = []
+  if (ps.length) devConditions.push(inArray(devices.principalId, ps.map(p => p.id)))
+  if (vs.length) devConditions.push(inArray(devices.vehicleId,   vs.map(v => v.id)))
+  const allDevices = devConditions.length
+    ? await db.select().from(devices).where(or(...devConditions))
+    : []
+
+  const units = [
+    ...ps.map(p => ({
+      id: p.id, type: 'person',
+      name: p.name, role: p.role, phone: p.phone, email: p.email,
+      status: p.status, photoKey: p.photoKey,
+      devices: allDevices.filter(d => d.principalId === p.id).map(serializeDevice),
+      emergency: {
+        dob: p.dob, height: p.height, bloodGroup: p.bloodGroup,
+        allergies: p.allergies, conditions: p.conditions, medications: p.medications,
+        contactName: p.emergContactName, contactPhone: p.emergContactPhone,
+        contactRelation: p.emergContactRelation,
+      },
+    })),
+    ...vs.map(v => ({
+      id: v.id, type: 'vehicle',
+      name: v.callsign, make: v.make, model: v.model,
+      plate: v.plate, armorLevel: v.armorLevel,
+      status: v.status, photoKey: v.photoKey,
+      devices: allDevices.filter(d => d.vehicleId === v.id).map(serializeDevice),
+    })),
+  ]
+
+  return {
+    ...account,
+    contact: { name: account.contactName, email: account.contactEmail, phone: account.contactPhone },
+    units,
+    groups: gs.map(g => ({
+      id: g.id, name: g.name,
+      unitIds: gms.filter(m => m.groupId === g.id).map(m => m.principalId ?? m.vehicleId).filter(Boolean),
+    })),
+  }
+}
+
+/* ── accounts ─────────────────────────────────────────────────── */
+app.get('/api/accounts', async (req, res) => {
+  try {
+    const accs = await db.select().from(accounts).orderBy(desc(accounts.createdAt))
+    const full = await Promise.all(accs.map(buildAccount))
+    res.json(full)
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/accounts', async (req, res) => {
+  const { name, type, industry, status, contactName, contactEmail, contactPhone } = req.body
+  try {
+    const [acc] = await db.insert(accounts).values({ name, type, industry, status, contactName, contactEmail, contactPhone }).returning()
+    res.json(await buildAccount(acc))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/accounts/:id', async (req, res) => {
+  const { name, type, industry, status, contactName, contactEmail, contactPhone } = req.body
+  try {
+    const [acc] = await db.update(accounts).set({
+      ...(name         !== undefined && { name }),
+      ...(type         !== undefined && { type }),
+      ...(industry     !== undefined && { industry }),
+      ...(status       !== undefined && { status }),
+      ...(contactName  !== undefined && { contactName }),
+      ...(contactEmail !== undefined && { contactEmail }),
+      ...(contactPhone !== undefined && { contactPhone }),
+      updatedAt: new Date(),
+    }).where(eq(accounts.id, req.params.id)).returning()
+    res.json(await buildAccount(acc))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:id', async (req, res) => {
+  try {
+    await db.delete(accounts).where(eq(accounts.id, req.params.id))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── principals ───────────────────────────────────────────────── */
+app.post('/api/accounts/:accountId/principals', async (req, res) => {
+  const { name, role, phone, email, status, emergency } = req.body
+  try {
+    const [p] = await db.insert(principals).values({
+      accountId: req.params.accountId, name, role, phone, email, status: status ?? 'normal',
+      dob: emergency?.dob, height: emergency?.height, bloodGroup: emergency?.bloodGroup,
+      allergies: emergency?.allergies, conditions: emergency?.conditions, medications: emergency?.medications,
+      emergContactName: emergency?.contactName, emergContactPhone: emergency?.contactPhone,
+      emergContactRelation: emergency?.contactRelation,
+    }).returning()
+    res.json({ id: p.id, type: 'person', name: p.name, role: p.role, phone: p.phone, email: p.email, status: p.status, devices: [], emergency: emergency ?? {} })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/accounts/:accountId/principals/:id', async (req, res) => {
+  const { name, role, phone, email, status, emergency } = req.body
+  try {
+    const [p] = await db.update(principals).set({
+      ...(name   !== undefined && { name }),
+      ...(role   !== undefined && { role }),
+      ...(phone  !== undefined && { phone }),
+      ...(email  !== undefined && { email }),
+      ...(status !== undefined && { status }),
+      ...(emergency !== undefined && {
+        dob: emergency.dob, height: emergency.height, bloodGroup: emergency.bloodGroup,
+        allergies: emergency.allergies, conditions: emergency.conditions, medications: emergency.medications,
+        emergContactName: emergency.contactName, emergContactPhone: emergency.contactPhone,
+        emergContactRelation: emergency.contactRelation,
+      }),
+      updatedAt: new Date(),
+    }).where(eq(principals.id, req.params.id)).returning()
+    res.json({ id: p.id, type: 'person', name: p.name, role: p.role, phone: p.phone, email: p.email, status: p.status, devices: [], emergency: emergency ?? {} })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:accountId/principals/:id', async (req, res) => {
+  try {
+    await db.delete(principals).where(eq(principals.id, req.params.id))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── vehicles ─────────────────────────────────────────────────── */
+app.post('/api/accounts/:accountId/vehicles', async (req, res) => {
+  const { name, make, model, plate, armorLevel, status } = req.body
+  try {
+    const [v] = await db.insert(vehicles).values({
+      accountId: req.params.accountId, callsign: name, make, model, plate, armorLevel, status: status ?? 'normal',
+    }).returning()
+    res.json({ id: v.id, type: 'vehicle', name: v.callsign, make: v.make, model: v.model, plate: v.plate, armorLevel: v.armorLevel, status: v.status, devices: [] })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
+  const { name, make, model, plate, armorLevel, status } = req.body
+  try {
+    const [v] = await db.update(vehicles).set({
+      ...(name       !== undefined && { callsign: name }),
+      ...(make       !== undefined && { make }),
+      ...(model      !== undefined && { model }),
+      ...(plate      !== undefined && { plate }),
+      ...(armorLevel !== undefined && { armorLevel }),
+      ...(status     !== undefined && { status }),
+      updatedAt: new Date(),
+    }).where(eq(vehicles.id, req.params.id)).returning()
+    res.json({ id: v.id, type: 'vehicle', name: v.callsign, make: v.make, model: v.model, plate: v.plate, armorLevel: v.armorLevel, status: v.status, devices: [] })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
+  try {
+    await db.delete(vehicles).where(eq(vehicles.id, req.params.id))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── groups ───────────────────────────────────────────────────── */
+app.post('/api/accounts/:accountId/groups', async (req, res) => {
+  try {
+    const [g] = await db.insert(groups).values({ accountId: req.params.accountId, name: req.body.name }).returning()
+    res.json({ id: g.id, name: g.name, unitIds: [] })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/accounts/:accountId/groups/:id', async (req, res) => {
+  try {
+    const [g] = await db.update(groups).set({ name: req.body.name }).where(eq(groups.id, req.params.id)).returning()
+    res.json({ id: g.id, name: g.name })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:accountId/groups/:id', async (req, res) => {
+  try {
+    await db.delete(groups).where(eq(groups.id, req.params.id))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── group members ────────────────────────────────────────────── */
+app.post('/api/accounts/:accountId/groups/:groupId/members', async (req, res) => {
+  const { principalId, vehicleId } = req.body
+  try {
+    await db.insert(groupMembers).values({ groupId: req.params.groupId, principalId: principalId ?? null, vehicleId: vehicleId ?? null })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:accountId/groups/:groupId/members', async (req, res) => {
+  const { principalId, vehicleId } = req.body
+  try {
+    if (principalId) {
+      await db.delete(groupMembers).where(and(eq(groupMembers.groupId, req.params.groupId), eq(groupMembers.principalId, principalId)))
+    } else if (vehicleId) {
+      await db.delete(groupMembers).where(and(eq(groupMembers.groupId, req.params.groupId), eq(groupMembers.vehicleId, vehicleId)))
+    }
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── devices ──────────────────────────────────────────────────── */
+app.post('/api/accounts/:accountId/units/:unitId/devices', async (req, res) => {
+  const { unitId } = req.params
+  const { name, type, model, serial, imei, firmware, status } = req.body
+  try {
+    const [p] = await db.select().from(principals).where(eq(principals.id, unitId)).limit(1)
+
+    let traccarDeviceId = null
+    try {
+      const uniqueId = imei || serial || randomUUID()
+      const td = await createTraccarDevice(name, uniqueId)
+      traccarDeviceId = String(td.id)
+    } catch (err) {
+      console.warn('[traccar] Could not register device in Traccar:', err.message)
+    }
+
+    const [d] = await db.insert(devices).values({
+      principalId: p ? unitId : null,
+      vehicleId:   p ? null   : unitId,
+      name, type: type ?? 'gps', model, serial, imei, firmware,
+      status: status ?? 'online', traccarDeviceId,
+    }).returning()
+    res.json(serializeDevice(d))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (req, res) => {
+  const { name, type, model, serial, imei, firmware, status, traccarDeviceId } = req.body
+  try {
+    const [d] = await db.update(devices).set({
+      ...(name             !== undefined && { name }),
+      ...(type             !== undefined && { type }),
+      ...(model            !== undefined && { model }),
+      ...(serial           !== undefined && { serial }),
+      ...(imei             !== undefined && { imei }),
+      ...(firmware         !== undefined && { firmware }),
+      ...(status           !== undefined && { status }),
+      ...(traccarDeviceId  !== undefined && { traccarDeviceId }),
+      updatedAt: new Date(),
+    }).where(eq(devices.id, req.params.deviceId)).returning()
+    res.json(serializeDevice(d))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (req, res) => {
+  try {
+    const [d] = await db.select().from(devices).where(eq(devices.id, req.params.deviceId)).limit(1)
+    if (d?.traccarDeviceId) {
+      try {
+        await deleteTraccarDevice(Number(d.traccarDeviceId))
+      } catch (err) {
+        console.warn('[traccar] Could not remove device from Traccar:', err.message)
+      }
+    }
+    await db.delete(devices).where(eq(devices.id, req.params.deviceId))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── traccar ──────────────────────────────────────────────────── */
+app.get('/api/live', (req, res) => {
+  res.setHeader('Content-Type',  'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection',    'keep-alive')
+  res.flushHeaders()
+
+  // Send current position cache immediately on connect
+  res.write(`data: ${JSON.stringify({ type: 'snapshot', positions: getPositionCache() })}\n\n`)
+
+  addSseClient(res)
+  req.on('close', () => removeSseClient(res))
+})
+
+app.get('/api/traccar/devices', async (req, res) => {
+  try {
+    res.json(await fetchTraccarDevices())
+  } catch (err) {
+    console.error('[traccar] devices error:', err.message)
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.get('/api/traccar/positions/:deviceId', async (req, res) => {
+  try {
+    const { from, to } = req.query
+    res.json(await fetchTraccarPositions(req.params.deviceId, from, to))
+  } catch (err) {
+    console.error('[traccar] positions error:', err.message)
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.listen(PORT, () => {
+  console.log(`API server → http://localhost:${PORT}`)
+  startTraccar()
+})

@@ -7,12 +7,12 @@ import AlertModal from './AlertModal'
 import Dashboard from '../pages/Dashboard'
 import UnitList from '../pages/UnitList'
 import UnitDetail from '../pages/UnitDetail'
+import VehicleDetail from '../pages/VehicleDetail'
+import PrincipalDetail from '../pages/PrincipalDetail'
 import OrgSettings from '../pages/OrgSettings'
 import LogsPage from '../pages/LogsPage'
-import { FleetGroups, FleetSubgroups, FleetVehicles } from '../pages/Fleets'
 import { AccountList, AccountDetail, GroupDetail } from '../pages/Accounts'
 import Feed from '../pages/Feed'
-import { mockFleets } from '../data/mockFleets'
 import { mockUnits }  from '../data/mockUnits'
 import { mockAlerts as seedAlerts } from '../data/mockAlerts'
 import './AdminShell.css'
@@ -22,7 +22,6 @@ const NAV_ROUTES = {
   unit:      '/admin/unit',
   feed:      '/admin/feed',
   accounts:  '/admin/accounts',
-  fleet:     '/admin/fleets',
   logs:      '/admin/logs',
   admin:     '/admin/settings',
 }
@@ -39,7 +38,6 @@ function screenFromPath(pathname) {
   if (pathname.startsWith('/admin/unit'))     return 'unit'
   if (pathname.startsWith('/admin/feed'))     return 'feed'
   if (pathname.startsWith('/admin/accounts')) return 'accounts'
-  if (pathname.startsWith('/admin/fleets'))   return 'fleet'
   if (pathname.startsWith('/admin/logs'))     return 'logs'
   if (pathname.startsWith('/admin/settings')) return 'admin'
   if (pathname.startsWith('/admin/ops'))      return 'dashboard'
@@ -127,29 +125,6 @@ export default function AdminShell() {
     // ── feed ─────────────────────────────────────
     if (path.startsWith('/admin/feed')) return bc([leaf('Feed')])
 
-    // ── fleets ───────────────────────────────────
-    if (path.startsWith('/admin/fleets')) {
-      const parts = path.replace('/admin/fleets', '').split('/').filter(Boolean)
-      const segs  = [link('Fleets', '/admin/fleets')]
-
-      if (parts.length >= 1) {
-        const fleet = mockFleets.find(f => f.id === parts[0])
-        if (fleet) segs.push(parts.length === 1
-          ? leaf(fleet.name)
-          : link(fleet.name, `/admin/fleets/${fleet.id}`))
-
-        if (parts.length >= 2) {
-          const sg     = fleet?.subgroups?.find(s => s.id === parts[1])
-          const sgName = sg?.name ?? (parts[1] === 'direct' ? 'All Vehicles' : parts[1])
-          segs.push(leaf(sgName))
-        }
-      } else {
-        segs[0] = leaf('Fleets')
-      }
-
-      return bc(segs)
-    }
-
     // ── settings ─────────────────────────────────
     if (path.startsWith('/admin/settings')) {
       const settingsRoot = link('Organization', '/admin/settings')
@@ -183,7 +158,6 @@ export default function AdminShell() {
       unit:      'Units',
       feed:      'Feed',
       accounts:  'Accounts',
-      fleet:     'Fleets',
       admin:     'Organization',
     }
     return bc([leaf(TOP_LABELS[screen] ?? 'Live Operations')])
@@ -202,15 +176,14 @@ export default function AdminShell() {
           <Routes>
             <Route path="/"          element={<Navigate to="/admin/ops" replace />} />
             <Route path="/ops"       element={<Dashboard units={mockUnits} />} />
-            <Route path="/unit"      element={<UnitList   units={mockUnits} />} />
-            <Route path="/unit/:id"  element={<UnitDetail units={mockUnits} />} />
+            <Route path="/unit"                   element={<UnitList      units={mockUnits} />} />
+            <Route path="/unit/principal/:id"    element={<PrincipalDetail />} />
+            <Route path="/unit/vehicle/:id"      element={<VehicleDetail />} />
+            <Route path="/unit/:id"              element={<UnitDetail    units={mockUnits} />} />
             <Route path="/feed"                                                    element={<Feed />} />
             <Route path="/accounts"                                                element={<AccountList />} />
             <Route path="/accounts/:accountId"             element={<AccountDetail />} />
             <Route path="/accounts/:accountId/:groupId"    element={<GroupDetail />} />
-            <Route path="/fleets"                          element={<FleetGroups />} />
-            <Route path="/fleets/:fleetId"               element={<FleetSubgroups />} />
-            <Route path="/fleets/:fleetId/:subgroupId"   element={<FleetVehicles />} />
             <Route path="/logs"        element={<LogsPage />} />
             <Route path="/settings/*" element={<OrgSettings />} />
             <Route path="*"          element={<AdminStub />} />

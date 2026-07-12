@@ -477,6 +477,13 @@
   text-overflow: ellipsis;
 }
 
+.upu-val--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.5;
+}
+
 .upu-open {
   display: block;
   width: 100%;
@@ -498,4 +505,109 @@
 .upu-open:hover {
   background: rgba(55, 194, 184, 0.08);
   color: #5ED8D0;
+}
+
+/* ── POI layer toggles ────────────────────────────────────── */
+.map-poi-toggles {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+.map-poi-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(174, 184, 189, 0.25);
+  background: rgba(10, 14, 16, 0.75);
+  backdrop-filter: blur(6px);
+  color: #AEB8BD;
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.map-poi-btn:hover {
+  border-color: rgba(174, 184, 189, 0.5);
+  color: #EEF2F3;
+}
+
+.map-poi-btn__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.map-poi-btn__spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  flex-shrink: 0;
+  animation: poi-spin 0.7s linear infinite;
+}
+
+@keyframes poi-spin {
+  to { transform: rotate(360deg); }
+}
+
+.map-poi-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ── POI markers ──────────────────────────────────────────── */
+.poi-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.poi-marker--police {
+  color: #4A90E2;
+}
+
+.poi-marker--hospital {
+  color: #F2495B;
+}
+
+.poi-marker {
+  cursor: pointer;
+}
+
+.poi-marker svg {
+  filter: drop-shadow(0 0 4px currentColor);
+  transition: transform 0.15s;
+}
+
+.poi-marker.selected svg,
+.poi-marker:hover svg {
+  transform: scale(1.4);
+  filter: drop-shadow(0 0 7px currentColor);
+}
+
+.poi-marker__label {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(10, 14, 16, 0.8);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: inherit;
 }

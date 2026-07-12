@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import './OrgSettings.css'
-import { mockMembers, mockDevices, mockVehicles, mockGeofences, mockRoles } from '../data/mockSettings'
+import { mockMembers, mockVehicles, mockGeofences, mockRoles } from '../data/mockSettings'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useAuth } from '../../auth/AuthContext'
 import { humanizeTime } from '../../../shared/utils/time'
@@ -96,12 +96,22 @@ export default function OrgSettings() {
   const [dbInvitations, setDbInvitations] = useState([])
   const [membersLoading, setMembersLoading] = useState(true)
   const [roles,     setRoles]     = useState(mockRoles)
-  const [devices,   setDevices]   = useState(mockDevices)
   const [vehicles,  setVehicles]  = useState(mockVehicles)
   const [geofences, setGeofences] = useState(mockGeofences)
+  const { accounts } = useAccounts()
   const location = useLocation()
   const navigate = useNavigate()
   const active   = sectionFromPath(location.pathname)
+
+  const allDevices = accounts.flatMap(acc =>
+    acc.units.flatMap(unit =>
+      (unit.devices ?? []).map(d => ({
+        ...d,
+        accountId: acc.id, unitId: unit.id,
+        assignedTo: unit.name, accountName: acc.name, unitType: unit.type,
+      }))
+    )
+  )
 
   useEffect(() => {
     Promise.all([
@@ -121,7 +131,7 @@ export default function OrgSettings() {
 
   const counts = {
     members:   dbUsers.length,
-    devices:   devices.length,
+    devices:   allDevices.length,
     vehicles:  vehicles.length,
     geofences: geofences.length,
   }
@@ -133,10 +143,6 @@ export default function OrgSettings() {
   function handleCreateRole(newRole) {
     setRoles(prev => [...prev, newRole])
     navigate('/admin/settings/roles')
-  }
-  function handleCreateDevice(newDevice) {
-    setDevices(prev => [...prev, newDevice])
-    navigate('/admin/settings/devices')
   }
   function handleCreateVehicle(newVehicle) {
     setVehicles(prev => [...prev, newVehicle])
@@ -173,8 +179,7 @@ export default function OrgSettings() {
           <Route path="members"             element={<MembersSection dbUsers={dbUsers} dbInvitations={dbInvitations} loading={membersLoading} onEdit={id => navigate(`/admin/settings/members/${id}`)} />} />
           <Route path="members/new"         element={<MemberInviteView onSave={() => navigate('/admin/settings/members')} />} />
           <Route path="members/:memberId"   element={<MemberEditView members={dbUsers} loading={membersLoading} onSave={handleUpdateMember} />} />
-          <Route path="devices"          element={<DevicesSection devices={devices} />} />
-          <Route path="devices/new"      element={<DeviceCreateView onSave={handleCreateDevice} />} />
+          <Route path="devices"          element={<DevicesSection devices={allDevices} />} />
           <Route path="vehicles"         element={<VehiclesSection vehicles={vehicles} />} />
           <Route path="vehicles/new"     element={<VehicleCreateView onSave={handleCreateVehicle} />} />
           <Route path="geofences"        element={<GeofencesSection geofences={geofences} />} />
@@ -190,6 +195,21 @@ export default function OrgSettings() {
 
 /* ── members ──────────────────────────────────────────────────── */
 function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
+  const [resendingId, setResendingId] = useState(null)
+  const [resendDone,  setResendDone]  = useState({})
+
+  async function handleResend(inv) {
+    setResendingId(inv.id)
+    try {
+      await fetch(apiUrl(`/api/invitations/${inv.id}/resend`), { method: 'POST' })
+      setResendDone(p => ({ ...p, [inv.id]: true }))
+      setTimeout(() => setResendDone(p => ({ ...p, [inv.id]: false })), 3000)
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setResendingId(null)
+    }
+  }
   const navigate = useNavigate()
   const [tab, setTab] = useState('users')
 
@@ -284,6 +304,7 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                 <th>ROLE</th>
                 <th>INVITED</th>
                 <th>STATUS</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -303,6 +324,15 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                       <td><Chip label={inv.role} color={ROLE_CHIP_META[inv.role]?.color ?? '#66727A'} /></td>
                       <td className="os-td-mono">{new Date(inv.invitedAt).toLocaleDateString()}</td>
                       <td><Chip label="PENDING" color="#E0A63C" dot /></td>
+                      <td>
+                        <button
+                          className="os-resend-btn"
+                          onClick={() => handleResend(inv)}
+                          disabled={resendingId === inv.id}
+                        >
+                          {resendDone[inv.id] ? '✓ Sent' : resendingId === inv.id ? 'Sending…' : 'Resend'}
+                        </button>
+                      </td>
                     </tr>
                   ))
               }
@@ -314,73 +344,190 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
   )
 }
 
+const DEVICE_TYPE_LABELS = {
+  gps:    'GPS',
+  camera: 'Camera',
+  alert:  'Panic Button',
+  radio:  'Radio',
+  phone:  'Phone',
+  other:  'Other',
+}
+
+const DEVICE_TYPE_OPTIONS = Object.entries(DEVICE_TYPE_LABELS).map(([k, v]) => ({ value: k, label: v }))
+
 /* ── devices ──────────────────────────────────────────────────── */
 function DevicesSection({ devices }) {
-  const navigate    = useNavigate()
-  const onlineCount = devices.filter(d => d.gpsOnline).length
-  const latestFw    = '4.2.1'
+  const { loading, accounts, updateDevice, deleteDevice } = useAccounts()
+  const onlineCount  = devices.filter(d => d.status === 'online').length
+  const [editing,    setEditing]    = useState(null)   // full device object with accountId+unitId
+  const [confirmId,  setConfirmId]  = useState(null)
+  const [form,       setForm]       = useState({})
+  const [saving,     setSaving]     = useState(false)
+
+  function startEdit(d) {
+    setEditing(d)
+    setForm({ name: d.name, type: d.type, model: d.model || '', serial: d.serial || '',
+              imei: d.imei || '', status: d.status })
+    setConfirmId(null)
+  }
+
+  function cancelEdit() { setEditing(null) }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await updateDevice(editing.accountId, editing.unitId, editing.id, form)
+      setEditing(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(d) {
+    await deleteDevice(d.accountId, d.unitId, d.id)
+    setConfirmId(null)
+    if (editing?.id === d.id) setEditing(null)
+  }
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // editing panel
+  if (editing) {
+    return (
+      <div className="os-section">
+        <div className="re-header">
+          <button className="re-back" onClick={cancelEdit}>← DEVICES</button>
+          <div className="re-header__title">
+            <span className="re-header__name">{editing.name}</span>
+            <span className="os-td-sub" style={{ marginTop: 0 }}>{editing.assignedTo} · {editing.accountName}</span>
+          </div>
+          <button className="re-save" onClick={handleSave} disabled={!form.name?.trim() || saving}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+
+        <div className="re-block">
+          <span className="re-block__label">DEVICE DETAILS</span>
+          <div className="re-fields">
+            <div className="re-field-group">
+              <label className="re-field-label">Name <span className="re-required">*</span></label>
+              <input className="re-field-input" value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
+            </div>
+            <div className="re-fields-row">
+              <div className="re-field-group">
+                <label className="re-field-label">Type</label>
+                <select className="re-field-input" value={form.type} onChange={e => set('type', e.target.value)}>
+                  {DEVICE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="re-field-group">
+                <label className="re-field-label">Status</label>
+                <select className="re-field-input" value={form.status} onChange={e => set('status', e.target.value)}>
+                  <option value="online">Online</option>
+                  <option value="offline">Offline</option>
+                </select>
+              </div>
+            </div>
+            <div className="re-field-group">
+              <label className="re-field-label">Model</label>
+              <input className="re-field-input" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. Teltonika FMB920" />
+            </div>
+            <div className="re-fields-row">
+              <div className="re-field-group">
+                <label className="re-field-label">IMEI</label>
+                <input className="re-field-input re-field-input--mono" value={form.imei} onChange={e => set('imei', e.target.value)} placeholder="15-digit IMEI" />
+              </div>
+              <div className="re-field-group">
+                <label className="re-field-label">Serial / Asset ID</label>
+                <input className="re-field-input re-field-input--mono" value={form.serial} onChange={e => set('serial', e.target.value)} placeholder="Serial number" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="os-section">
       <div className="os-section__header">
         <div>
           <span className="os-section__title">Devices</span>
           <span className="os-section__meta">
-            {devices.length} devices · {onlineCount} online · telemetry + dual camera
+            {devices.length} device{devices.length !== 1 ? 's' : ''} · {onlineCount} online
           </span>
         </div>
-        <button className="os-action-btn" onClick={() => navigate('/admin/settings/devices/new')}>
-          + Provision device
-        </button>
       </div>
 
-      <div className="os-table-wrap">
-        <table className="os-table">
-          <thead>
-            <tr>
-              <th>UNIT ID</th>
-              <th>IMEI</th>
-              <th>ASSIGNED TO</th>
-              <th>FIRMWARE</th>
-              <th>CAMERAS</th>
-              <th>STATUS</th>
-              <th>LAST CHECK-IN</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map(d => {
-              const camColor = d.cameras === '—' ? '#5D676C'
-                : d.cameras.startsWith('2') ? '#37C2B8'
-                : d.cameras.startsWith('1') ? '#E0A63C'
-                : '#66727A'
-              return (
-                <tr key={d.id}>
-                  <td className="os-td-mono os-td-id">{d.id}</td>
-                  <td className="os-td-mono os-td-imei">{d.imei}</td>
-                  <td>{d.assignedTo}</td>
-                  <td>
-                    <span
-                      className="os-td-mono"
-                      style={{ color: d.firmware === latestFw ? 'var(--adm-text-muted)' : '#E0A63C' }}
-                    >
-                      {d.firmware}
-                    </span>
-                  </td>
-                  <td>
-                    <Chip label={d.cameras} color={camColor} />
-                  </td>
-                  <td>
-                    <Chip
-                      label={d.gpsOnline ? 'ONLINE' : 'OFFLINE'}
-                      color={d.gpsOnline ? '#37C2B8' : '#66727A'}
-                    />
-                  </td>
-                  <td className="os-td-mono">{d.lastCheckin}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {loading ? (
+        <div className="os-empty">Loading…</div>
+      ) : devices.length === 0 ? (
+        <div className="os-empty">No devices yet — add them from a unit's edit panel in Accounts.</div>
+      ) : (
+        <div className="os-table-wrap">
+          <table className="os-table">
+            <thead>
+              <tr>
+                <th>NAME</th>
+                <th>TYPE</th>
+                <th>IMEI</th>
+                <th>SERIAL</th>
+                <th>ASSIGNED TO</th>
+                <th>MODEL</th>
+                <th>STATUS</th>
+                <th>TRACCAR ID</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.map(d => (
+                <>
+                  <tr key={d.id}>
+                    <td>{d.name}</td>
+                    <td className="os-td-mono">{DEVICE_TYPE_LABELS[d.type] ?? d.type}</td>
+                    <td className="os-td-mono os-td-imei">{d.imei || '—'}</td>
+                    <td className="os-td-mono">{d.serial || '—'}</td>
+                    <td>
+                      <span>{d.assignedTo}</span>
+                      <span className="os-td-sub">{d.accountName}</span>
+                    </td>
+                    <td>{d.model || '—'}</td>
+                    <td>
+                      <Chip
+                        label={d.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+                        color={d.status === 'online' ? '#37C2B8' : '#66727A'}
+                      />
+                    </td>
+                    <td className="os-td-mono">{d.traccarDeviceId || '—'}</td>
+                    <td className="os-td-actions">
+                      <button className="os-icon-btn" title="Edit" onClick={() => startEdit(d)}>
+                        <PencilIcon />
+                      </button>
+                      <button className="os-icon-btn os-icon-btn--danger" title="Delete"
+                        onClick={() => setConfirmId(confirmId === d.id ? null : d.id)}>
+                        <TrashIcon />
+                      </button>
+                    </td>
+                  </tr>
+                  {confirmId === d.id && (
+                    <tr key={`${d.id}-confirm`} className="os-confirm-row">
+                      <td colSpan={9}>
+                        <div className="os-confirm-bar">
+                          <span>Delete "{d.name}"? This also removes it from Traccar.</span>
+                          <div className="os-confirm-bar__actions">
+                            <button className="os-icon-btn" onClick={() => setConfirmId(null)}>Cancel</button>
+                            <button className="os-icon-btn os-icon-btn--danger" onClick={() => handleDelete(d)}>Delete</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -1345,75 +1492,6 @@ function MemberInviteView({ onSave }) {
   )
 }
 
-/* ── device create ────────────────────────────────────────────── */
-function DeviceCreateView({ onSave }) {
-  const navigate = useNavigate()
-  const [unitId,      setUnitId]      = useState('')
-  const [imei,        setImei]        = useState('')
-  const [assignedTo,  setAssignedTo]  = useState('')
-  const [firmware,    setFirmware]    = useState('')
-  const [gpsOnline,   setGpsOnline]   = useState(true)
-
-  const canCreate = unitId.trim().length > 0
-
-  function handleCreate() {
-    if (!canCreate) return
-    onSave({
-      id:          unitId.trim().toUpperCase(),
-      imei:        imei.trim() || '—',
-      assignedTo:  assignedTo.trim() || '—',
-      firmware:    firmware.trim() || '—',
-      gpsOnline,
-      cameras:     '—',
-      lastCheckin: 'Just now',
-    })
-  }
-
-  return (
-    <div className="os-section">
-      <div className="re-header">
-        <button className="re-back" onClick={() => navigate('/admin/settings/devices')}>← DEVICES</button>
-        <div className="re-header__title">
-          <span className="re-header__name" style={{ color: unitId ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
-            {unitId || 'New device'}
-          </span>
-        </div>
-        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Provision device</button>
-      </div>
-
-      <div className="re-block">
-        <span className="re-block__label">DEVICE DETAILS</span>
-        <div className="re-fields">
-          <div className="re-field-group">
-            <label className="re-field-label">Unit ID <span className="re-required">*</span></label>
-            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-06" value={unitId} onChange={e => setUnitId(e.target.value)} autoFocus />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">IMEI</label>
-            <input className="re-field-input re-field-input--mono" placeholder="15-digit IMEI" value={imei} onChange={e => setImei(e.target.value)} maxLength={15} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Assigned To</label>
-            <input className="re-field-input" placeholder="Principal · vehicle" value={assignedTo} onChange={e => setAssignedTo(e.target.value)} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Firmware</label>
-            <input className="re-field-input re-field-input--mono" placeholder="e.g. 4.2.1" value={firmware} onChange={e => setFirmware(e.target.value)} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Status</label>
-            <PillGroup
-              options={['ONLINE', 'OFFLINE']}
-              value={gpsOnline ? 'ONLINE' : 'OFFLINE'}
-              onChange={v => setGpsOnline(v === 'ONLINE')}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ── vehicle create ───────────────────────────────────────────── */
 function VehicleCreateView({ onSave }) {
   const navigate = useNavigate()
@@ -1561,6 +1639,22 @@ function PillGroup({ options, value, onChange }) {
         </button>
       ))}
     </div>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <path d="M9.5 1.5l2 2L4 11H2v-2L9.5 1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <path d="M2 4h9M5 4V2.5h3V4M5.5 6v4M7.5 6v4M3 4l.7 7h5.6L10 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   )
 }
 

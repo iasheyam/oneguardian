@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { useAccounts } from '../contexts/AccountsContext'
 import './UnitDetail.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -80,14 +81,28 @@ function sliceRoute(coords, progress) {
 }
 
 export default function UnitDetail({ units }) {
-  const { id }    = useParams()
-  const navigate  = useNavigate()
-  const unit      = units.find(u => u.id === id)
+  const { id }           = useParams()
+  const navigate         = useNavigate()
+  const { accounts }     = useAccounts()
+  const unit             = units.find(u => u.id === id)
+
+  // Look up real DB unit across all accounts if not found in mock units
+  const dbUnit = useMemo(() => {
+    if (unit) return null
+    for (const acc of accounts) {
+      const found = acc.units?.find(u => u.id === id)
+      if (found) return { ...found, accountId: acc.id, accountName: acc.name }
+    }
+    return null
+  }, [unit, accounts, id])
+
   const [tab, setTab]                     = useState('live')
   const [routeProgress, setRouteProgress] = useState(100)
   const [fullscreen, setFullscreen]       = useState(false)
   const mapRef   = useRef(null)
   const scrubRef = useRef(null)
+
+  if (!unit && dbUnit) return <DbUnitProfile unit={dbUnit} />
 
   if (!unit) {
     return (
@@ -491,6 +506,116 @@ function MetaItem({ label, value, mono }) {
     <div className="ud-meta-item">
       <span className="ud-meta-item__label">{label}</span>
       <span className={`ud-meta-item__value${mono ? ' mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
+
+/* ── DbUnitProfile ────────────────────────────────────────────── */
+function DbUnitProfile({ unit }) {
+  const navigate = useNavigate()
+  const sm = STATUS_META[unit.status] ?? STATUS_META.offline
+  const isPerson = unit.type === 'person'
+
+  const initials = (unit.name ?? unit.callsign ?? '?')
+    .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+
+  return (
+    <div className="ud-db-profile">
+      <div className="ud-db-profile__topbar">
+        <button className="ud-back-btn" onClick={() => navigate(-1)}>← Back</button>
+        <span className="ud-db-profile__breadcrumb">{unit.accountName} / {unit.name ?? unit.callsign}</span>
+      </div>
+
+      <div className="ud-db-profile__body">
+        {/* Hero */}
+        <div className="ud-db-profile__hero">
+          <div className="ud-db-profile__avatar">
+            {unit.photoUrl
+              ? <img src={unit.photoUrl} alt={unit.name} />
+              : <span>{initials}</span>}
+          </div>
+          <div className="ud-db-profile__hero-info">
+            <h1 className="ud-db-profile__name">{unit.name ?? unit.callsign}</h1>
+            {isPerson && unit.role && <p className="ud-db-profile__role">{unit.role}</p>}
+            {!isPerson && <p className="ud-db-profile__role">{[unit.make, unit.model].filter(Boolean).join(' ')}</p>}
+            <span className="ud-db-profile__status-chip" style={{ color: sm.color, background: `${sm.color}18`, borderColor: `${sm.color}44` }}>
+              {sm.label}
+            </span>
+          </div>
+        </div>
+
+        <div className="ud-db-profile__sections">
+          {/* Contact / Vehicle info */}
+          <section className="ud-db-section">
+            <h2 className="ud-db-section__title">{isPerson ? 'Contact' : 'Vehicle'}</h2>
+            <div className="ud-db-section__grid">
+              {isPerson ? (<>
+                {unit.phone && <DbField label="Phone" value={unit.phone} mono />}
+                {unit.email && <DbField label="Email" value={unit.email} mono />}
+              </>) : (<>
+                {unit.callsign   && <DbField label="Callsign"    value={unit.callsign} />}
+                {unit.plate      && <DbField label="Plate"       value={unit.plate} mono />}
+                {unit.armorLevel && <DbField label="Armor Level" value={unit.armorLevel} />}
+              </>)}
+            </div>
+          </section>
+
+          {/* Medical — persons only */}
+          {isPerson && (unit.dob || unit.height || unit.bloodGroup || unit.allergies || unit.conditions || unit.medications) && (
+            <section className="ud-db-section">
+              <h2 className="ud-db-section__title">Medical</h2>
+              <div className="ud-db-section__grid">
+                {unit.dob        && <DbField label="Date of Birth" value={unit.dob} />}
+                {unit.height     && <DbField label="Height"        value={unit.height} />}
+                {unit.bloodGroup && <DbField label="Blood Group"   value={unit.bloodGroup} highlight />}
+                {unit.allergies  && <DbField label="Allergies"     value={unit.allergies} wide />}
+                {unit.conditions && <DbField label="Conditions"    value={unit.conditions} wide />}
+                {unit.medications && <DbField label="Medications"  value={unit.medications} wide />}
+              </div>
+            </section>
+          )}
+
+          {/* Emergency contact — persons only */}
+          {isPerson && (unit.emergContactName || unit.emergContactPhone) && (
+            <section className="ud-db-section">
+              <h2 className="ud-db-section__title">Emergency Contact</h2>
+              <div className="ud-db-section__grid">
+                {unit.emergContactName     && <DbField label="Name"     value={unit.emergContactName} />}
+                {unit.emergContactPhone    && <DbField label="Phone"    value={unit.emergContactPhone} mono />}
+                {unit.emergContactRelation && <DbField label="Relation" value={unit.emergContactRelation} />}
+              </div>
+            </section>
+          )}
+
+          {/* Devices */}
+          {unit.devices?.length > 0 && (
+            <section className="ud-db-section">
+              <h2 className="ud-db-section__title">Devices</h2>
+              <div className="ud-db-section__device-list">
+                {unit.devices.map(dev => (
+                  <div key={dev.id} className="ud-db-device">
+                    <span className="ud-db-device__name">{dev.name}</span>
+                    <span className="ud-db-device__type">{dev.type}</span>
+                    {dev.serial && <span className="ud-db-device__serial mono">{dev.serial}</span>}
+                    <span className={`ud-db-device__status ${dev.status}`}>{dev.status}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DbField({ label, value, mono, highlight, wide }) {
+  return (
+    <div className={`ud-db-field${wide ? ' ud-db-field--wide' : ''}`}>
+      <span className="ud-db-field__label">{label}</span>
+      <span className={`ud-db-field__value${mono ? ' mono' : ''}${highlight ? ' ud-db-field__value--highlight' : ''}`}>
+        {value}
+      </span>
     </div>
   )
 }

@@ -4,6 +4,7 @@ export const mockUnits = [
     id: 'SP-01',
     callsign: 'FALCON',
     type: 'vehicle',
+    traccarDeviceId: 1,
     principal: 'A. Voss',
     principalRole: 'Principal · CEO',
     agent: 'R. Cole',

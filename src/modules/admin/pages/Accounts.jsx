@@ -32,10 +32,10 @@ function avatarColor(id) {
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length]
 }
-function fmtSince(ym) {
-  if (!ym) return '—'
-  const [y, m] = ym.split('-')
-  return `${new Date(+y, +m - 1).toLocaleString('en-US', { month: 'short' })} ${y}`
+function fmtSince(val) {
+  if (!val) return '—'
+  const d = new Date(val)
+  return d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
 }
 function alertCount(units) {
   return units.filter(u => u.status === 'warning' || u.status === 'duress').length
@@ -197,13 +197,6 @@ function UnitForm({ initial, onSave, onCancel }) {
 
   return (
     <>
-      {!isEdit && (
-        <div className="ac-type-toggle">
-          <button className={`ac-type-toggle__btn${type === 'person' ? ' active' : ''}`} onClick={() => switchType('person')}>Person</button>
-          <button className={`ac-type-toggle__btn${type === 'vehicle' ? ' active' : ''}`} onClick={() => switchType('vehicle')}>Vehicle</button>
-        </div>
-      )}
-
       {type === 'person' ? (
         <>
           <Field label="FULL NAME *">
@@ -381,7 +374,7 @@ function UnitPicker({ account, currentUnitIds, onAdd }) {
 /* ── Device form ──────────────────────────────────────────────── */
 function DeviceForm({ initial, onSave, onCancel }) {
   const [form, setForm] = useState({
-    name: '', type: 'gps', model: '', serial: '', status: 'online', ...initial,
+    name: '', type: 'gps', model: '', serial: '', imei: '', status: 'online', ...initial,
   })
   const ref = useRef()
   useEffect(() => { ref.current?.focus() }, [])
@@ -410,10 +403,16 @@ function DeviceForm({ initial, onSave, onCancel }) {
         <input className="ac-input" value={form.model} onChange={e => set('model', e.target.value)}
           placeholder="e.g. Queclink GV500, BlackVue DR970X" />
       </Field>
-      <Field label="SERIAL / ASSET ID">
-        <input className="ac-input" value={form.serial} onChange={e => set('serial', e.target.value)}
-          placeholder="Serial number or asset ID" />
-      </Field>
+      <div className="ac-field-row">
+        <Field label="IMEI">
+          <input className="ac-input" value={form.imei} onChange={e => set('imei', e.target.value)}
+            placeholder="15-digit IMEI" />
+        </Field>
+        <Field label="SERIAL / ASSET ID">
+          <input className="ac-input" value={form.serial} onChange={e => set('serial', e.target.value)}
+            placeholder="Serial number" />
+        </Field>
+      </div>
       <div className="ac-form-actions">
         <button className="ac-btn ac-btn--ghost" onClick={onCancel}>Cancel</button>
         <button className="ac-btn ac-btn--primary" disabled={!form.name.trim()} onClick={() => onSave(form)}>Save</button>
@@ -422,10 +421,10 @@ function DeviceForm({ initial, onSave, onCancel }) {
   )
 }
 
-/* ── Devices panel ────────────────────────────────────────────── */
-function DevicesPanel({ unit, accountId, onClose }) {
+/* ── DeviceManager — reusable device list + add/edit ─────────── */
+function DeviceManager({ unit, accountId }) {
   const { createDevice, updateDevice, deleteDevice } = useAccounts()
-  const [view,          setView]          = useState('list')  // 'list' | 'add' | 'edit'
+  const [view,          setView]          = useState('list')
   const [editingDevice, setEditingDevice] = useState(null)
   const [confirmId,     setConfirmId]     = useState(null)
 
@@ -440,88 +439,126 @@ function DevicesPanel({ unit, accountId, onClose }) {
   function startEdit(dev) { setEditingDevice(dev); setView('edit') }
   function backToList()   { setView('list'); setEditingDevice(null) }
 
-  const panelTitle = view === 'list' ? `DEVICES — ${unit.name}`
-                   : view === 'add'  ? 'Add Device'
-                   :                   'Edit Device'
+  if (view !== 'list') {
+    return (
+      <>
+        <button className="ac-dv-back" onClick={backToList}>← Back to devices</button>
+        <DeviceForm
+          initial={view === 'edit' ? editingDevice : undefined}
+          onSave={handleSave}
+          onCancel={backToList}
+        />
+      </>
+    )
+  }
 
   return (
-    <Panel title={panelTitle} onClose={onClose}>
-      {view !== 'list' ? (
-        <>
-          <button className="ac-dv-back" onClick={backToList}>← Back to devices</button>
-          <DeviceForm
-            initial={view === 'edit' ? editingDevice : undefined}
-            onSave={handleSave}
-            onCancel={backToList}
-          />
-        </>
-      ) : (
-        <>
-          <div className="ac-dv-header">
-            <span className="ac-dv-count">
-              {devices.length} device{devices.length !== 1 ? 's' : ''}
-              {devices.filter(d => d.status === 'online').length > 0 && (
-                <span className="ac-dv-online"> · {devices.filter(d => d.status === 'online').length} online</span>
-              )}
-            </span>
-            <button className="ac-btn ac-btn--primary ac-btn--sm" onClick={() => setView('add')}>
-              + Add Device
-            </button>
-          </div>
-
-          {devices.length === 0 ? (
-            <div className="ac-empty ac-empty--inline">
-              <span className="ac-empty__text">No devices assigned — click "Add Device" to provision one</span>
-            </div>
-          ) : (
-            <div className="ac-dv-list">
-              {devices.map(dev => {
-                const dt        = DEVICE_TYPES[dev.type] ?? DEVICE_TYPES.other
-                const isOnline  = dev.status === 'online'
-                const isConfirm = confirmId === dev.id
-                return (
-                  <div key={dev.id} className={`ac-dv-row${isConfirm ? ' is-confirming' : ''}`}>
-                    <div className="ac-dv-row__main">
-                      <span className="ac-dv-dot" style={{ background: isOnline ? '#37C2B8' : '#66727A',
-                        boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none' }} />
-                      <div className="ac-dv-info">
-                        <span className="ac-dv-name">{dev.name}</span>
-                        <div className="ac-dv-meta">
-                          <span className="ac-dv-type-chip" style={{ color: dt.color, borderColor: `${dt.color}55` }}>
-                            {dt.label}
-                          </span>
-                          {dev.model  && <span className="ac-dv-model">{dev.model}</span>}
-                          {dev.serial && <span className="ac-dv-serial">SN: {dev.serial}</span>}
-                        </div>
-                      </div>
-                      <div className="ac-dv-actions">
-                        <span className="ac-dv-status" style={{ color: isOnline ? '#37C2B8' : '#66727A' }}>
-                          {dev.status}
-                        </span>
-                        <button className="ac-icon-btn" title="Edit device" onClick={() => startEdit(dev)}>
-                          <EditIcon />
-                        </button>
-                        <button className="ac-icon-btn ac-icon-btn--danger" title="Delete device"
-                          onClick={() => setConfirmId(dev.id)}>
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </div>
-                    {isConfirm && (
-                      <ConfirmBar
-                        message={`Remove "${dev.name}" from this unit?`}
-                        onCancel={() => setConfirmId(null)}
-                        onConfirm={() => { deleteDevice(accountId, unit.id, dev.id); setConfirmId(null) }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+    <>
+      <div className="ac-dv-header">
+        <span className="ac-dv-count">
+          {devices.length} device{devices.length !== 1 ? 's' : ''}
+          {devices.filter(d => d.status === 'online').length > 0 && (
+            <span className="ac-dv-online"> · {devices.filter(d => d.status === 'online').length} online</span>
           )}
-        </>
+        </span>
+        <button className="ac-btn ac-btn--primary ac-btn--sm" onClick={() => setView('add')}>
+          + Add Device
+        </button>
+      </div>
+
+      {devices.length === 0 ? (
+        <div className="ac-empty ac-empty--inline">
+          <span className="ac-empty__text">No devices assigned — click "Add Device" to provision one</span>
+        </div>
+      ) : (
+        <div className="ac-dv-list">
+          {devices.map(dev => {
+            const dt        = DEVICE_TYPES[dev.type] ?? DEVICE_TYPES.other
+            const isOnline  = dev.status === 'online'
+            const isConfirm = confirmId === dev.id
+            return (
+              <div key={dev.id} className={`ac-dv-row${isConfirm ? ' is-confirming' : ''}`}>
+                <div className="ac-dv-row__main">
+                  <span className="ac-dv-dot" style={{ background: isOnline ? '#37C2B8' : '#66727A',
+                    boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none' }} />
+                  <div className="ac-dv-info">
+                    <span className="ac-dv-name">{dev.name}</span>
+                    <div className="ac-dv-meta">
+                      <span className="ac-dv-type-chip" style={{ color: dt.color, borderColor: `${dt.color}55` }}>
+                        {dt.label}
+                      </span>
+                      {dev.model  && <span className="ac-dv-model">{dev.model}</span>}
+                      {dev.serial && <span className="ac-dv-serial">SN: {dev.serial}</span>}
+                    </div>
+                  </div>
+                  <div className="ac-dv-actions">
+                    <span className="ac-dv-status" style={{ color: isOnline ? '#37C2B8' : '#66727A' }}>
+                      {dev.status}
+                    </span>
+                    <button className="ac-icon-btn" title="Edit device" onClick={() => startEdit(dev)}>
+                      <EditIcon />
+                    </button>
+                    <button className="ac-icon-btn ac-icon-btn--danger" title="Delete device"
+                      onClick={() => setConfirmId(dev.id)}>
+                      <TrashIcon />
+                    </button>
+                  </div>
+                </div>
+                {isConfirm && (
+                  <ConfirmBar
+                    message={`Remove "${dev.name}" from this unit?`}
+                    onCancel={() => setConfirmId(null)}
+                    onConfirm={() => { deleteDevice(accountId, unit.id, dev.id); setConfirmId(null) }}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
+    </>
+  )
+}
+
+/* ── Devices panel (standalone) ───────────────────────────────── */
+function DevicesPanel({ unit, accountId, onClose }) {
+  return (
+    <Panel title={`DEVICES — ${unit.name}`} onClose={onClose}>
+      <DeviceManager unit={unit} accountId={accountId} />
     </Panel>
+  )
+}
+
+/* ── Unit edit panel — DETAILS + DEVICES tabs ─────────────────── */
+function UnitEditPanel({ unit, accountId, onSave, onCancel }) {
+  const [tab, setTab] = useState('details')
+
+  const TABS = [
+    { id: 'details', label: 'DETAILS' },
+    { id: 'devices', label: 'DEVICES' },
+  ]
+
+  return (
+    <>
+      <div className="ac-edit-tabs">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            className={`ac-edit-tab${tab === t.id ? ' is-active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'details' && (
+        <UnitForm initial={unit} onSave={onSave} onCancel={onCancel} />
+      )}
+      {tab === 'devices' && (
+        <DeviceManager unit={unit} accountId={accountId} />
+      )}
+    </>
   )
 }
 
@@ -534,11 +571,12 @@ export function AccountList() {
   const [panel,     setPanel]     = useState(null)
   const [confirmId, setConfirmId] = useState(null)
 
-  function handleSave(data) {
+  async function handleSave(data) {
     if (panel.mode === 'create') {
-      navigate(`/admin/accounts/${createAccount(data)}`)
+      const id = await createAccount(data)
+      navigate(`/admin/accounts/${id}`)
     } else {
-      updateAccount(panel.account.id, data)
+      await updateAccount(panel.account.id, data)
     }
     setPanel(null)
   }
@@ -623,6 +661,95 @@ export function AccountList() {
   )
 }
 
+/* ── UnitAvatar ───────────────────────────────────────────────── */
+function UnitAvatar({ unit }) {
+  if (unit.photoUrl) {
+    return <img className="ac-unit-avatar ac-unit-avatar--photo" src={unit.photoUrl} alt={unit.name} />
+  }
+  const initials = unit.type === 'vehicle'
+    ? (unit.name ?? '?')[0].toUpperCase()
+    : unit.name.split(' ').slice(0, 2).map(w => w[0]).join('')
+  const bg = avatarColor(unit.id)
+  return (
+    <div className="ac-unit-avatar" style={{ background: bg }}>
+      {initials}
+    </div>
+  )
+}
+
+/* ── RosterCard ───────────────────────────────────────────────── */
+function RosterCard({ unit, accountId, confirmDelete, setConfirmDelete, setPanel, setDeviceUnitId, deleteUnit }) {
+  const sm        = UNIT_STATUS[unit.status] ?? UNIT_STATUS.offline
+  const isConfirm = confirmDelete === unit.id
+  const navigate  = useNavigate()
+  const unitPath  = unit.type === 'person'
+    ? `/admin/unit/principal/${unit.id}`
+    : `/admin/unit/vehicle/${unit.id}`
+  return (
+    <div
+      className={`ac-roster-card${isConfirm ? ' is-confirming' : ''}`}
+      style={{ '--status-color': sm.color, cursor: 'pointer' }}
+      onClick={() => navigate(unitPath)}
+    >
+      <div className="ac-roster-card__header">
+        <UnitAvatar unit={unit} />
+        <div className="ac-roster-card__title-col">
+          <div className="ac-roster-card__title-row">
+            <span className="ac-roster-card__dot" style={{ background: sm.color, boxShadow: unit.status !== 'offline' ? `0 0 6px ${sm.color}99` : 'none' }} />
+            <span className="ac-roster-card__name">{unit.name}</span>
+          </div>
+          {unit.type === 'person' && unit.role && <span className="ac-roster-card__role">{unit.role}</span>}
+          {unit.type === 'vehicle' && <span className="ac-roster-card__role">{[unit.make, unit.model].filter(Boolean).join(' ')}</span>}
+        </div>
+        <div className="ac-card-actions" onClick={e => e.stopPropagation()}>
+          <button className="ac-icon-btn" title="Edit" onClick={() => setPanel({ mode: 'editUnit', unit })}>
+            <EditIcon />
+          </button>
+          <button className="ac-icon-btn ac-icon-btn--danger" title="Delete" onClick={() => setConfirmDelete(unit.id)}>
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
+
+      <div className="ac-roster-card__body">
+        {unit.type === 'person' ? (
+          <>
+            {unit.phone && <span className="ac-roster-card__meta ac-roster-card__meta--mono">{unit.phone}</span>}
+            {unit.email && <span className="ac-roster-card__meta ac-roster-card__meta--mono">{unit.email}</span>}
+          </>
+        ) : (
+          <div className="ac-roster-card__vehicle-row">
+            {unit.plate      && <span className="ac-roster-card__plate">{unit.plate}</span>}
+            {unit.armorLevel && <span className="ac-roster-card__armor">{unit.armorLevel}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="ac-roster-card__footer">
+        <span className="ac-chip ac-chip--sm" style={{ color: sm.color, background: `${sm.color}18`, borderColor: `${sm.color}44` }}>
+          {sm.label}
+        </span>
+        {unit.type === 'person' && unit.emergency?.bloodGroup && (
+          <span className="ac-blood-chip">{unit.emergency.bloodGroup}</span>
+        )}
+        <button className="ac-roster-card__devs-btn" onClick={e => { e.stopPropagation(); setDeviceUnitId(unit.id) }}>
+          {unit.devices?.length ?? 0} device{(unit.devices?.length ?? 0) !== 1 ? 's' : ''}
+        </button>
+      </div>
+
+      {isConfirm && (
+        <div onClick={e => e.stopPropagation()}>
+          <ConfirmBar
+            message={`Remove "${unit.name}" from this account?`}
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => { deleteUnit(accountId, unit.id); setConfirmDelete(null) }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ═══════════════════════════════════════════════════════════════
    PAGE 2 — Account Detail  (roster + groups)
 ═══════════════════════════════════════════════════════════════ */
@@ -633,7 +760,6 @@ export function AccountDetail() {
   const account       = accounts.find(a => a.id === accountId)
 
   const [panel,         setPanel]         = useState(null)
-  const [filter,        setFilter]        = useState('all')   // all | people | vehicles
   const [confirmDelete, setConfirmDelete] = useState(null)    // 'account' | unitId
   const [deviceUnitId,  setDeviceUnitId]  = useState(null)
 
@@ -647,9 +773,8 @@ export function AccountDetail() {
   const people   = account.units.filter(u => u.type === 'person').length
   const vehicles = account.units.filter(u => u.type === 'vehicle').length
 
-  const filteredUnits = account.units.filter(u =>
-    filter === 'all' ? true : filter === 'people' ? u.type === 'person' : u.type === 'vehicle'
-  )
+  const peopleUnits   = account.units.filter(u => u.type === 'person')
+  const vehicleUnits  = account.units.filter(u => u.type === 'vehicle')
 
   function handleSaveUnit(data) {
     if (panel.mode === 'addUnit') {
@@ -665,6 +790,16 @@ export function AccountDetail() {
       <div className="ac-top-bar">
         <button className="ac-back" onClick={() => navigate('/admin/accounts')}>← All accounts</button>
         <div className="ac-top-bar__actions">
+          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'addUnit', unitType: 'person' })}>
+            + Person
+          </button>
+          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'addUnit', unitType: 'vehicle' })}>
+            + Vehicle
+          </button>
+          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'createGroup' })}>
+            + Group
+          </button>
+          <div className="ac-top-bar__divider" />
           <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'editAccount' })}>
             <EditIcon /> Edit
           </button>
@@ -713,7 +848,7 @@ export function AccountDetail() {
           { value: devs,                   label: 'DEVICES'     },
           { value: account.groups.length,  label: 'GROUPS'      },
           { value: alerts, label: 'ALERTS', color: alerts > 0 ? '#E0A63C' : undefined },
-          { value: fmtSince(account.since), label: 'CLIENT SINCE', small: true },
+          { value: fmtSince(account.createdAt), label: 'CLIENT SINCE', small: true },
         ].map(s => (
           <div key={s.label} className="ac-stat-block">
             <span className="ac-stat-block__value" style={{ color: s.color, fontSize: s.small ? 13 : undefined }}>
@@ -724,111 +859,34 @@ export function AccountDetail() {
         ))}
       </div>
 
-      {/* roster */}
+      {/* people */}
       <section className="ac-section">
         <div className="ac-section__head">
-          <div className="ac-section__head-left">
-            <span className="ac-section__label">ROSTER</span>
-            <div className="ac-filter-tabs">
-              {['all','people','vehicles'].map(f => (
-                <button key={f}
-                  className={`ac-filter-tab${filter === f ? ' active' : ''}`}
-                  onClick={() => setFilter(f)}>
-                  {f === 'all' ? `All (${account.units.length})` : f === 'people' ? `People (${people})` : `Vehicles (${vehicles})`}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="ac-section__head-actions">
-            <button className="ac-btn ac-btn--ghost ac-btn--sm"
-              onClick={() => setPanel({ mode: 'addUnit', unitType: 'person' })}>
-              + Person
-            </button>
-            <button className="ac-btn ac-btn--ghost ac-btn--sm"
-              onClick={() => setPanel({ mode: 'addUnit', unitType: 'vehicle' })}>
-              + Vehicle
-            </button>
-          </div>
+          <span className="ac-section__label">PEOPLE <span className="ac-section__count">{peopleUnits.length}</span></span>
         </div>
-
-        {filteredUnits.length === 0 ? (
+        {peopleUnits.length === 0 ? (
           <div className="ac-empty ac-empty--inline">
-            <span className="ac-empty__text">
-              {account.units.length === 0
-                ? 'No units yet — add a person or vehicle to get started'
-                : `No ${filter} in this account`}
-            </span>
+            <span className="ac-empty__text">No people added yet</span>
           </div>
         ) : (
           <div className="ac-grid ac-grid--roster">
-            {filteredUnits.map(unit => {
-              const sm        = UNIT_STATUS[unit.status] ?? UNIT_STATUS.offline
-              const isConfirm = confirmDelete === unit.id
-              return (
-                <div key={unit.id}
-                  className={`ac-roster-card${isConfirm ? ' is-confirming' : ''}`}
-                  style={{ '--status-color': sm.color }}>
+            {peopleUnits.map(unit => <RosterCard key={unit.id} unit={unit} accountId={accountId} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete} setPanel={setPanel} setDeviceUnitId={setDeviceUnitId} deleteUnit={deleteUnit} />)}
+          </div>
+        )}
+      </section>
 
-                  <div className="ac-roster-card__header">
-                    <div className="ac-roster-card__title-row">
-                      <span className="ac-roster-card__dot" style={{ background: sm.color, boxShadow: unit.status !== 'offline' ? `0 0 6px ${sm.color}99` : 'none' }} />
-                      <span className="ac-roster-card__name">{unit.name}</span>
-                      <span className={`ac-unit-type-chip ac-unit-type-chip--${unit.type}`}>
-                        {unit.type === 'person' ? 'PERSON' : 'VEHICLE'}
-                      </span>
-                    </div>
-                    <div className="ac-card-actions" onClick={e => e.stopPropagation()}>
-                      <button className="ac-icon-btn" title="Edit" onClick={() => setPanel({ mode: 'editUnit', unit })}>
-                        <EditIcon />
-                      </button>
-                      <button className="ac-icon-btn ac-icon-btn--danger" title="Delete" onClick={() => setConfirmDelete(unit.id)}>
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="ac-roster-card__body">
-                    {unit.type === 'person' ? (
-                      <>
-                        {unit.role  && <span className="ac-roster-card__meta">{unit.role}</span>}
-                        {unit.phone && <span className="ac-roster-card__meta ac-roster-card__meta--mono">{unit.phone}</span>}
-                        {unit.email && <span className="ac-roster-card__meta ac-roster-card__meta--mono">{unit.email}</span>}
-                      </>
-                    ) : (
-                      <>
-                        <span className="ac-roster-card__meta">{unit.make} {unit.model}</span>
-                        <div className="ac-roster-card__vehicle-row">
-                          {unit.plate      && <span className="ac-roster-card__plate">{unit.plate}</span>}
-                          {unit.armorLevel && <span className="ac-roster-card__armor">{unit.armorLevel}</span>}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="ac-roster-card__footer">
-                    <span className="ac-chip ac-chip--sm" style={{ color: sm.color, background: `${sm.color}18`, borderColor: `${sm.color}44` }}>
-                      {sm.label}
-                    </span>
-                    {unit.type === 'person' && unit.emergency?.bloodGroup && (
-                      <span className="ac-blood-chip">{unit.emergency.bloodGroup}</span>
-                    )}
-                    <button className="ac-roster-card__devs-btn" onClick={e => { e.stopPropagation(); setDeviceUnitId(unit.id) }}>
-                      {unit.devices?.length ?? 0} device{(unit.devices?.length ?? 0) !== 1 ? 's' : ''}
-                    </button>
-                  </div>
-
-                  {isConfirm && (
-                    <div onClick={e => e.stopPropagation()}>
-                      <ConfirmBar
-                        message={`Remove "${unit.name}" from this account?`}
-                        onCancel={() => setConfirmDelete(null)}
-                        onConfirm={() => { deleteUnit(accountId, unit.id); setConfirmDelete(null) }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+      {/* vehicles */}
+      <section className="ac-section">
+        <div className="ac-section__head">
+          <span className="ac-section__label">VEHICLES <span className="ac-section__count">{vehicleUnits.length}</span></span>
+        </div>
+        {vehicleUnits.length === 0 ? (
+          <div className="ac-empty ac-empty--inline">
+            <span className="ac-empty__text">No vehicles added yet</span>
+          </div>
+        ) : (
+          <div className="ac-grid ac-grid--roster">
+            {vehicleUnits.map(unit => <RosterCard key={unit.id} unit={unit} accountId={accountId} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete} setPanel={setPanel} setDeviceUnitId={setDeviceUnitId} deleteUnit={deleteUnit} />)}
           </div>
         )}
       </section>
@@ -837,9 +895,6 @@ export function AccountDetail() {
       <section className="ac-section">
         <div className="ac-section__head">
           <span className="ac-section__label">GROUPS</span>
-          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'createGroup' })}>
-            + New Group
-          </button>
         </div>
 
         {account.groups.length === 0 ? (
@@ -894,14 +949,24 @@ export function AccountDetail() {
             onCancel={() => setPanel(null)} />
         </Panel>
       )}
-      {(panel?.mode === 'addUnit' || panel?.mode === 'editUnit') && (
+      {panel?.mode === 'addUnit' && (
         <Panel
-          title={panel.mode === 'addUnit'
-            ? (panel.unitType === 'vehicle' ? 'Add Vehicle' : 'Add Person')
-            : `Edit ${panel.unit.type === 'person' ? 'Person' : 'Vehicle'}`}
+          title={panel.unitType === 'vehicle' ? 'Add Vehicle' : 'Add Person'}
           onClose={() => setPanel(null)}>
           <UnitForm
-            initial={panel.mode === 'editUnit' ? panel.unit : (panel.unitType === 'vehicle' ? { type: 'vehicle' } : undefined)}
+            initial={panel.unitType === 'vehicle' ? { type: 'vehicle' } : undefined}
+            onSave={handleSaveUnit}
+            onCancel={() => setPanel(null)}
+          />
+        </Panel>
+      )}
+      {panel?.mode === 'editUnit' && (
+        <Panel
+          title={`Edit ${panel.unit.type === 'person' ? 'Person' : 'Vehicle'}`}
+          onClose={() => setPanel(null)}>
+          <UnitEditPanel
+            unit={panel.unit}
+            accountId={accountId}
             onSave={handleSaveUnit}
             onCancel={() => setPanel(null)}
           />
@@ -910,8 +975,8 @@ export function AccountDetail() {
       {panel?.mode === 'createGroup' && (
         <Panel title="New Group" onClose={() => setPanel(null)}>
           <NameForm label="GROUP NAME *" placeholder="e.g. Family Outing, Airport Run"
-            onSave={name => {
-              const id = createGroup(accountId, name)
+            onSave={async name => {
+              const id = await createGroup(accountId, name)
               setPanel(null)
               navigate(`/admin/accounts/${accountId}/${id}`)
             }}
