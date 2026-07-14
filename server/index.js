@@ -408,10 +408,14 @@ function serializeDevice(d) {
   }
 }
 
-async function buildAccount(account) {
+async function buildAccount(account, scope = null) {
   const id = account.id
-  const ps  = await db.select().from(principals).where(eq(principals.accountId, id))
-  const vs  = await db.select().from(vehicles).where(eq(vehicles.accountId, id))
+  const ps = scope
+    ? (scope.principalIds.size ? await db.select().from(principals).where(and(eq(principals.accountId, id), inArray(principals.id, [...scope.principalIds]))) : [])
+    : await db.select().from(principals).where(eq(principals.accountId, id))
+  const vs = scope
+    ? (scope.vehicleIds.size ? await db.select().from(vehicles).where(and(eq(vehicles.accountId, id), inArray(vehicles.id, [...scope.vehicleIds]))) : [])
+    : await db.select().from(vehicles).where(eq(vehicles.accountId, id))
   const gs  = await db.select().from(groups).where(eq(groups.accountId, id))
   const gms = gs.length
     ? await db.select().from(groupMembers).where(inArray(groupMembers.groupId, gs.map(g => g.id)))
@@ -572,9 +576,31 @@ app.delete('/api/users/:userId/assignments/:assignmentId', ...requirePermission(
 // Mutating routes require the 'accounts' permission
 app.get('/api/accounts', authenticate, async (req, res) => {
   try {
-    const accs = await db.select().from(accounts).orderBy(desc(accounts.createdAt))
-    const full = await Promise.all(accs.map(buildAccount))
-    res.json(full)
+    // Admins (accounts permission) see everything
+    if (req.caller.permissions.includes('accounts')) {
+      const accs = await db.select().from(accounts).orderBy(desc(accounts.createdAt))
+      return res.json(await Promise.all(accs.map(a => buildAccount(a))))
+    }
+
+    // Scoped users: only units explicitly assigned to them
+    const assignments = await db.select().from(userScopeAssignments)
+      .where(eq(userScopeAssignments.userId, req.caller.id))
+
+    if (assignments.length === 0) return res.json([])
+
+    const scopeByAccount = {}
+    for (const a of assignments) {
+      if (!scopeByAccount[a.accountId]) {
+        scopeByAccount[a.accountId] = { principalIds: new Set(), vehicleIds: new Set() }
+      }
+      if (a.scopeType === 'principal') scopeByAccount[a.accountId].principalIds.add(a.scopeId)
+      if (a.scopeType === 'vehicle')   scopeByAccount[a.accountId].vehicleIds.add(a.scopeId)
+    }
+
+    const accs = await db.select().from(accounts)
+      .where(inArray(accounts.id, Object.keys(scopeByAccount)))
+      .orderBy(desc(accounts.createdAt))
+    res.json(await Promise.all(accs.map(a => buildAccount(a, scopeByAccount[a.id]))))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
