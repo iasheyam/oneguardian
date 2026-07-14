@@ -4,7 +4,7 @@ import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/mapb
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
-import { apiUrl } from '../../../shared/utils/api'
+import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import './UnitDetail.css'
 
 function toLocalDt(date) {
@@ -85,10 +85,24 @@ export default function PrincipalDetail() {
     return { unit: null, accountId: null, accountName: null }
   }, [accounts, id])
 
-  // Live position from Traccar
-  const traccarDeviceId = unit?.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId
-  const livePos         = traccarDeviceId ? positions[traccarDeviceId] : null
-  const isLive          = !!livePos
+  // All devices that have a Traccar ID and a live position
+  const liveDevices = useMemo(() => {
+    if (!unit?.devices) return []
+    return unit.devices
+      .filter(d => d.traccarDeviceId && positions[d.traccarDeviceId])
+      .map(d => ({ device: d, pos: positions[d.traccarDeviceId], isPrimary: d.id === unit.primaryDeviceId }))
+  }, [unit, positions])
+
+  // Primary device (for stats, fly-to, history)
+  const primaryLive     = liveDevices.find(ld => ld.isPrimary) ?? liveDevices[0] ?? null
+  const livePos         = primaryLive?.pos ?? null
+  const isLive          = liveDevices.length > 0
+
+  // For history route fetching: use primary device's Traccar ID, fallback to first
+  const traccarDeviceId = (
+    unit?.devices?.find(d => d.id === unit.primaryDeviceId)?.traccarDeviceId
+    ?? unit?.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId
+  )
 
   const meta     = STATUS_META[unit?.status ?? 'offline'] ?? STATUS_META.offline
   const speedKph = livePos ? (livePos.speed * 1.852).toFixed(1) : null
@@ -106,12 +120,12 @@ export default function PrincipalDetail() {
     return () => clearTimeout(timer)
   }, [fullscreen])
 
-  // Fly to live position when livePos arrives — only on live tab
+  // Fly to primary live device when position arrives — only on live tab
   useEffect(() => {
     const map = mapRef.current
     if (!map || !livePos || tab !== 'live') return
     map.flyTo({ center: [livePos.longitude, livePos.latitude], zoom: 14, duration: 700 })
-  }, [livePos, tab])
+  }, [livePos?.latitude, livePos?.longitude, tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-trigger first load when switching to history tab
   useEffect(() => {
@@ -126,7 +140,7 @@ export default function PrincipalDetail() {
     setRouteProgress(100)
     const from = new Date(fromDt).toISOString()
     const to   = new Date(toDt).toISOString()
-    fetch(apiUrl(`/api/traccar/positions/${traccarDeviceId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`))
+    apiFetch(apiUrl(`/api/traccar/positions/${traccarDeviceId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`))
       .then(r => r.json())
       .then(positions => setRouteCoords(positions.map(p => [p.longitude, p.latitude])))
       .catch(() => {})
@@ -285,26 +299,35 @@ export default function PrincipalDetail() {
         >
           <NavigationControl position="bottom-right" showCompass={false} />
 
-          {/* LIVE — pulsing ring marker if we have a Traccar position */}
-          {tab === 'live' && livePos && (
-            <Marker longitude={livePos.longitude} latitude={livePos.latitude} anchor="center">
-              <div className="ud-live-marker">
-                <div className="ud-marker-dot-wrap">
-                  <span className="ud-marker-ring" style={{ background: meta.color }} />
-                  <span
-                    className="ud-marker-dot"
-                    style={{
-                      background: meta.color,
-                      boxShadow: `0 0 14px ${meta.color}99`,
-                    }}
-                  />
+          {/* LIVE — one marker per device with a live position */}
+          {tab === 'live' && liveDevices.map(({ device, pos }) => {
+            const spd        = (pos.speed * 1.852).toFixed(1)
+            const isMainMarker = device.id === primaryLive?.device.id
+            return isMainMarker ? (
+              <Marker key={device.id} longitude={pos.longitude} latitude={pos.latitude} anchor="center">
+                <div className="ud-live-marker">
+                  <div className="ud-marker-dot-wrap">
+                    <span className="ud-marker-ring" style={{ background: meta.color }} />
+                    <span className="ud-marker-dot" style={{ background: meta.color, boxShadow: `0 0 14px ${meta.color}99` }} />
+                  </div>
+                  <span className="ud-marker-label" style={{ borderColor: `${meta.color}55` }}>
+                    {device.name} · {spd} kph
+                  </span>
                 </div>
-                <span className="ud-marker-label" style={{ borderColor: `${meta.color}55` }}>
-                  {unit.name} · {speedKph} kph
-                </span>
-              </div>
-            </Marker>
-          )}
+              </Marker>
+            ) : (
+              <Marker key={device.id} longitude={pos.longitude} latitude={pos.latitude} anchor="center">
+                <div className="ud-live-marker">
+                  <div className="ud-marker-dot-wrap">
+                    <span className="ud-marker-dot" style={{ background: '#E0A63C', boxShadow: '0 0 10px #E0A63C88', width: 10, height: 10 }} />
+                  </div>
+                  <span className="ud-marker-label" style={{ borderColor: '#E0A63C55', color: '#E0A63C' }}>
+                    {device.name} · {spd} kph
+                  </span>
+                </div>
+              </Marker>
+            )
+          })}
 
           {/* HISTORY — trail + scrubber playhead */}
           {tab === 'history' && routeCoords.length >= 2 && (
@@ -366,7 +389,7 @@ export default function PrincipalDetail() {
       {/* ── body ──────────────────────────────────── */}
       <div className="ud-body">
         <div className="ud-left">
-          {tab === 'live'    && <PersonStats livePos={livePos} />}
+          {tab === 'live'    && <PersonStats livePos={livePos} liveDeviceCount={liveDevices.length} />}
           {tab === 'history' && !loadingRoute && (
             <div className="ud-section">
               <span className="ud-section__title">ROUTE STATS</span>
@@ -423,7 +446,7 @@ export default function PrincipalDetail() {
 }
 
 /* ── PersonStats ─────────────────────────────────────────────── */
-function PersonStats({ livePos }) {
+function PersonStats({ livePos, liveDeviceCount }) {
   const speedKph = livePos ? (livePos.speed * 1.852).toFixed(1) : null
   const isLive   = !!livePos
 
@@ -456,15 +479,12 @@ function PersonStats({ livePos }) {
         </div>
 
         <div className="ud-stat-tile">
-          <span className="ud-stat-tile__label">SIGNAL</span>
-          <span
-            className="ud-stat-tile__value"
-            style={{ color: isLive ? '#37C2B8' : '#66727A' }}
-          >
-            {isLive ? 'LIVE' : 'OFFLINE'}
+          <span className="ud-stat-tile__label">TRACKING</span>
+          <span className="ud-stat-tile__value" style={{ color: isLive ? '#37C2B8' : '#66727A' }}>
+            {liveDeviceCount > 0 ? liveDeviceCount : '—'}
           </span>
           <span className="ud-stat-tile__sub">
-            {isLive ? 'Active tracking' : 'No GPS signal'}
+            {liveDeviceCount > 0 ? `Device${liveDeviceCount > 1 ? 's' : ''} live` : 'No signal'}
           </span>
         </div>
       </div>

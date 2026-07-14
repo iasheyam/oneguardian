@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, unique } from 'drizzle-orm/pg-core'
 import { users } from './users.js'
 
 export const accounts = pgTable('accounts', {
@@ -18,6 +18,7 @@ export const accounts = pgTable('accounts', {
 export const principals = pgTable('principals', {
   id:              uuid('id').primaryKey().defaultRandom(),
   accountId:       uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  primaryDeviceId: uuid('primary_device_id'), // FK to devices.id added via migration (circular ref)
   userId:          uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
   name:            text('name').notNull(),
   role:            text('role'),
@@ -43,6 +44,7 @@ export const principals = pgTable('principals', {
 export const vehicles = pgTable('vehicles', {
   id:         uuid('id').primaryKey().defaultRandom(),
   accountId:  uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  primaryDeviceId: uuid('primary_device_id'), // FK to devices.id added via migration (circular ref)
   callsign:   text('callsign').notNull(),
   photoKey:   text('photo_key'), // S3 object key
   make:       text('make'),
@@ -82,3 +84,14 @@ export const devices = pgTable('devices', {
   createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+export const userScopeAssignments = pgTable('user_scope_assignments', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  userId:    uuid('user_id').notNull().references(() => users.id,    { onDelete: 'cascade' }),
+  accountId: uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  scopeType: text('scope_type').notNull(), // 'principal' | 'vehicle'
+  scopeId:   uuid('scope_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  unique('uq_user_scope').on(t.userId, t.accountId, t.scopeType, t.scopeId),
+])

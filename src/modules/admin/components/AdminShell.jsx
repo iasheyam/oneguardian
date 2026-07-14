@@ -1,19 +1,18 @@
 import { useMemo, useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAccounts } from '../contexts/AccountsContext'
+import { useAuth } from '../../auth/AuthContext'
 import NavRail from './NavRail'
 import TopBar from './TopBar'
 import AlertModal from './AlertModal'
 import Dashboard from '../pages/Dashboard'
 import UnitList from '../pages/UnitList'
-import UnitDetail from '../pages/UnitDetail'
 import VehicleDetail from '../pages/VehicleDetail'
 import PrincipalDetail from '../pages/PrincipalDetail'
 import OrgSettings from '../pages/OrgSettings'
 import LogsPage from '../pages/LogsPage'
 import { AccountList, AccountDetail, GroupDetail } from '../pages/Accounts'
 import Feed from '../pages/Feed'
-import { mockUnits }  from '../data/mockUnits'
 import { mockAlerts as seedAlerts } from '../data/mockAlerts'
 import './AdminShell.css'
 
@@ -44,11 +43,39 @@ function screenFromPath(pathname) {
   return 'dashboard'
 }
 
+const PERM_ROUTES = [
+  { path: '/admin/ops',      perm: 'ops'      },
+  { path: '/admin/unit',     perm: 'units'    },
+  { path: '/admin/feed',     perm: 'feed'     },
+  { path: '/admin/accounts', perm: 'accounts' },
+  { path: '/admin/logs',     perm: 'logs'     },
+  { path: '/admin/settings', perm: 'admin'    },
+]
+
+function RequirePermission({ perm, children }) {
+  const { can, dbUser } = useAuth()
+  if (!dbUser) return null
+  if (!can(perm)) return <NoAccess />
+  return children
+}
+
+function NoAccess() {
+  return (
+    <div className="admin-stub">
+      <span className="admin-stub__title">Access denied</span>
+      <span className="admin-stub__sub">You don't have permission to view this page</span>
+    </div>
+  )
+}
+
 export default function AdminShell() {
   const location  = useLocation()
   const navigate  = useNavigate()
   const screen    = screenFromPath(location.pathname)
   const { accounts } = useAccounts()
+  const { can }   = useAuth()
+
+  const defaultPath = PERM_ROUTES.find(r => can(r.perm))?.path ?? '/admin/ops'
 
   // ── alert state ────────────────────────────────────────────
   const [alerts,    setAlerts]    = useState(seedAlerts)
@@ -73,15 +100,15 @@ export default function AdminShell() {
 
   const fleetStatus = useMemo(() => {
     const duressCount = activeAlerts.filter(a => a.level === 'duress').length
-    const unitWarn    = mockUnits.filter(u => u.status === 'warning').length
+    const allUnits    = accounts.flatMap(a => a.units ?? [])
+    const unitWarn    = allUnits.filter(u => u.status === 'warning').length
     const warnCount   = activeAlerts.filter(a => a.level === 'warning').length + unitWarn
     if (duressCount > 0)
       return { level: 'duress',  text: `${duressCount} DURESS ACTIVE`, color: '#F2495B' }
     if (warnCount > 0)
       return { level: 'warning', text: `${warnCount} WARNING${warnCount > 1 ? 'S' : ''}`, color: '#E0A63C' }
     return { level: 'secure', text: 'ALL SECURE', color: '#37C2B8' }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAlerts.length, activeAlerts.map(a => a.level + a.status).join()])
+  }, [activeAlerts, accounts])
 
   const crumb = useMemo(() => {
     const path = location.pathname
@@ -90,13 +117,16 @@ export default function AdminShell() {
     const link  = (label, to) => ({ label, to })
 
     // ── unit detail ──────────────────────────────
-    const unitMatch = path.match(/^\/admin\/unit\/(.+)$/)
-    if (unitMatch) {
-      const unit = mockUnits.find(u => u.id === unitMatch[1])
-      return bc([
-        link('Units', '/admin/unit'),
-        leaf(unit ? `${unit.id} · ${unit.callsign}` : unitMatch[1]),
-      ])
+    const principalMatch = path.match(/^\/admin\/unit\/principal\/(.+)$/)
+    const vehicleMatch   = path.match(/^\/admin\/unit\/vehicle\/(.+)$/)
+    if (principalMatch || vehicleMatch) {
+      const unitId = principalMatch?.[1] ?? vehicleMatch?.[1]
+      let unitName = unitId
+      for (const acc of accounts) {
+        const found = acc.units?.find(u => u.id === unitId)
+        if (found) { unitName = found.name; break }
+      }
+      return bc([link('Units', '/admin/unit'), leaf(unitName)])
     }
 
     // ── unit list ────────────────────────────────
@@ -174,18 +204,17 @@ export default function AdminShell() {
         />
         <main className="admin-content">
           <Routes>
-            <Route path="/"          element={<Navigate to="/admin/ops" replace />} />
-            <Route path="/ops"       element={<Dashboard units={mockUnits} />} />
-            <Route path="/unit"                   element={<UnitList      units={mockUnits} />} />
-            <Route path="/unit/principal/:id"    element={<PrincipalDetail />} />
-            <Route path="/unit/vehicle/:id"      element={<VehicleDetail />} />
-            <Route path="/unit/:id"              element={<UnitDetail    units={mockUnits} />} />
-            <Route path="/feed"                                                    element={<Feed />} />
-            <Route path="/accounts"                                                element={<AccountList />} />
-            <Route path="/accounts/:accountId"             element={<AccountDetail />} />
-            <Route path="/accounts/:accountId/:groupId"    element={<GroupDetail />} />
-            <Route path="/logs"        element={<LogsPage />} />
-            <Route path="/settings/*" element={<OrgSettings />} />
+            <Route path="/"          element={<Navigate to={defaultPath} replace />} />
+            <Route path="/ops"       element={<RequirePermission perm="ops"><Dashboard /></RequirePermission>} />
+            <Route path="/unit"                element={<RequirePermission perm="units"><UnitList /></RequirePermission>} />
+            <Route path="/unit/principal/:id" element={<RequirePermission perm="units"><PrincipalDetail /></RequirePermission>} />
+            <Route path="/unit/vehicle/:id"   element={<RequirePermission perm="units"><VehicleDetail /></RequirePermission>} />
+            <Route path="/feed"      element={<RequirePermission perm="feed"><Feed /></RequirePermission>} />
+            <Route path="/accounts"                                                element={<RequirePermission perm="accounts"><AccountList /></RequirePermission>} />
+            <Route path="/accounts/:accountId"             element={<RequirePermission perm="accounts"><AccountDetail /></RequirePermission>} />
+            <Route path="/accounts/:accountId/:groupId"    element={<RequirePermission perm="accounts"><GroupDetail /></RequirePermission>} />
+            <Route path="/logs"      element={<RequirePermission perm="logs"><LogsPage /></RequirePermission>} />
+            <Route path="/settings/*" element={<RequirePermission perm="admin"><OrgSettings /></RequirePermission>} />
             <Route path="*"          element={<AdminStub />} />
           </Routes>
         </main>

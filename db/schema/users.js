@@ -1,4 +1,20 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, jsonb, primaryKey } from 'drizzle-orm/pg-core'
+
+export const roles = pgTable('roles', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  name:        text('name').notNull().unique(),
+  description: text('description'),
+  color:       text('color').notNull().default('#66727A'),
+  isSystem:    boolean('is_system').notNull().default(false),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const rolePermissions = pgTable('role_permissions', {
+  roleId:     uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  permission: text('permission').notNull(),
+}, t => [
+  primaryKey({ columns: [t.roleId, t.permission] })
+])
 
 export const users = pgTable('users', {
   id:           uuid('id').primaryKey().defaultRandom(),
@@ -7,7 +23,7 @@ export const users = pgTable('users', {
   email:        text('email').notNull().unique(),
   phone:        text('phone'),
   type:         text('type').notNull().default('internal'),
-  role:         text('role').notNull().default('Operator'),
+  roleId:       uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
   twoFactor:    boolean('two_factor').notNull().default(false),
   status:       text('status').notNull().default('offline'),
   addedBy:      uuid('added_by'),
@@ -38,7 +54,7 @@ export const invitations = pgTable('invitations', {
   email:      text('email').notNull().unique(),
   name:       text('name').notNull(),
   type:       text('type').notNull().default('internal'),
-  role:       text('role').notNull().default('Operator'),
+  roleId:     uuid('role_id').references(() => roles.id, { onDelete: 'set null' }),
   invitedBy:  uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
   invitedAt:  timestamp('invited_at',  { withTimezone: true }).notNull().defaultNow(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),

@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Map, { Marker, Popup, NavigationControl, AttributionControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
 import './Dashboard.css'
 
@@ -27,10 +28,15 @@ const INITIAL_VIEW = {
   zoom:      12.5,
 }
 
-export default function Dashboard({ units }) {
+export default function Dashboard() {
+  const { accounts } = useAccounts()
+  const positions    = useLivePositions()
+  const navigate     = useNavigate()
+  const mapRef       = useRef(null)
+
   const [filter,       setFilter]     = useState('all')
   const [search,       setSearch]     = useState('')
-  const [selectedId,   setSelectedId] = useState(units[0]?.id ?? null)
+  const [selectedId,   setSelectedId] = useState(null)
   const [popupId,      setPopupId]    = useState(null)
   const [showPolice,      setShowPolice]      = useState(false)
   const [showHospital,    setShowHospital]    = useState(false)
@@ -39,82 +45,48 @@ export default function Dashboard({ units }) {
   const [loadingPolice,   setLoadingPolice]   = useState(false)
   const [loadingHospital, setLoadingHospital] = useState(false)
   const [selectedPOI,     setSelectedPOI]     = useState(null)
-  const mapRef = useRef(null)
-  const navigate = useNavigate()
 
-  async function fetchOverpassPOIs(amenity) {
-    const center = mapRef.current?.getCenter() ?? { lng: INITIAL_VIEW.longitude, lat: INITIAL_VIEW.latitude }
-    const query = `[out:json][timeout:15];(node["amenity"="${amenity}"](around:6000,${center.lat},${center.lng});way["amenity"="${amenity}"](around:6000,${center.lat},${center.lng}););out center;`
-    const res = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: query,
-    })
-    const data = await res.json()
-    return data.elements
-      .map(el => ({
-        id:       el.id,
-        name:     el.tags?.name ?? amenity,
-        lat:      el.lat ?? el.center?.lat,
-        lng:      el.lon ?? el.center?.lon,
-        phone:    el.tags?.phone ?? el.tags?.['contact:phone'] ?? null,
-        website:  el.tags?.website ?? el.tags?.['contact:website'] ?? null,
-        hours:    el.tags?.opening_hours ?? null,
-        address:  [el.tags?.['addr:housenumber'], el.tags?.['addr:street'], el.tags?.['addr:city']].filter(Boolean).join(', ') || null,
-        operator: el.tags?.operator ?? null,
-        emergency: el.tags?.emergency ?? null,
-        beds:     el.tags?.beds ?? null,
-      }))
-      .filter(el => el.lat && el.lng)
-  }
-
-  useEffect(() => {
-    if (!showPolice) { setPoliceMarkers([]); return }
-    setLoadingPolice(true)
-    fetchOverpassPOIs('police')
-      .then(setPoliceMarkers)
-      .finally(() => setLoadingPolice(false))
-  }, [showPolice])
-
-  useEffect(() => {
-    if (!showHospital) { setHospitalMarkers([]); return }
-    setLoadingHospital(true)
-    fetchOverpassPOIs('hospital')
-      .then(setHospitalMarkers)
-      .finally(() => setLoadingHospital(false))
-  }, [showHospital])
-
-  const livePositions = useLivePositions()
-
-  // Merge live Traccar positions into units; mock coords used as fallback
-  const mergedUnits = useMemo(() => units.map(unit => {
-    if (!unit.traccarDeviceId) return unit
-    const pos = livePositions[unit.traccarDeviceId]
-    if (!pos) return unit
-    return {
-      ...unit,
-      lat:         pos.latitude,
-      lng:         pos.longitude,
-      speed:       Math.round(pos.speed * 1.852), // knots → kph
-      heading:     pos.course,
-      isLive:      true,
-      lastUpdated: 'LIVE',
+  // Flatten all real units across accounts; attach primary device live position
+  const displayUnits = useMemo(() => {
+    const result = []
+    for (const acc of accounts) {
+      for (const unit of acc.units ?? []) {
+        const primaryDev = unit.devices?.find(d => d.id === unit.primaryDeviceId)
+        const traccarId  = primaryDev?.traccarDeviceId
+                         ?? unit.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId
+                         ?? null
+        const pos = traccarId ? positions[traccarId] : null
+        result.push({
+          id:          unit.id,
+          name:        unit.name,
+          type:        unit.type,
+          status:      unit.status ?? 'offline',
+          accountName: acc.name,
+          isLive:      !!pos,
+          lat:         pos?.latitude  ?? null,
+          lng:         pos?.longitude ?? null,
+          speed:       pos ? Math.round(pos.speed * 1.852) : null,
+          heading:     pos?.course ?? null,
+        })
+      }
     }
-  }), [units, livePositions])
+    return result
+  }, [accounts, positions])
 
   const counts = useMemo(() => ({
-    total:   mergedUnits.length,
-    warning: mergedUnits.filter(u => u.status === 'warning').length,
-    normal:  mergedUnits.filter(u => u.status === 'normal').length,
-    offline: mergedUnits.filter(u => u.status === 'offline').length,
-    duress:  mergedUnits.filter(u => u.status === 'duress').length,
-  }), [mergedUnits])
+    total:   displayUnits.length,
+    warning: displayUnits.filter(u => u.status === 'warning').length,
+    normal:  displayUnits.filter(u => u.status === 'normal').length,
+    offline: displayUnits.filter(u => u.status === 'offline').length,
+    duress:  displayUnits.filter(u => u.status === 'duress').length,
+  }), [displayUnits])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return mergedUnits
+    return displayUnits
       .filter(u => filter === 'all' || u.status === filter)
-      .filter(u => !q || [u.id, u.callsign, u.principal, u.agent].join(' ').toLowerCase().includes(q))
-  }, [mergedUnits, filter, search])
+      .filter(u => !q || [u.name, u.accountName].join(' ').toLowerCase().includes(q))
+  }, [displayUnits, filter, search])
 
   const groups = useMemo(() => {
     const byStatus = (a, b) => {
@@ -127,40 +99,66 @@ export default function Dashboard({ units }) {
     }
   }, [filtered])
 
-  const selected = mergedUnits.find(u => u.id === selectedId)
+  // Only units with a live position get a map marker
+  const liveUnits = useMemo(() => displayUnits.filter(u => u.lat != null), [displayUnits])
 
   function selectUnit(id) {
     setSelectedId(id)
     setPopupId(id)
-    const unit = mergedUnits.find(u => u.id === id)
-    if (unit && mapRef.current) {
-      mapRef.current.flyTo({
-        center:   [unit.lng, unit.lat],
-        zoom:     14,
-        duration: 900,
-      })
+    const unit = displayUnits.find(u => u.id === id)
+    if (unit?.lat != null && mapRef.current) {
+      mapRef.current.flyTo({ center: [unit.lng, unit.lat], zoom: 14, duration: 900 })
     }
   }
+
+  async function fetchOverpassPOIs(amenity) {
+    const center = mapRef.current?.getCenter() ?? { lng: INITIAL_VIEW.longitude, lat: INITIAL_VIEW.latitude }
+    const query  = `[out:json][timeout:15];(node["amenity"="${amenity}"](around:6000,${center.lat},${center.lng});way["amenity"="${amenity}"](around:6000,${center.lat},${center.lng}););out center;`
+    const res    = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query })
+    const data   = await res.json()
+    return data.elements
+      .map(el => ({
+        id:        el.id,
+        name:      el.tags?.name ?? amenity,
+        lat:       el.lat ?? el.center?.lat,
+        lng:       el.lon ?? el.center?.lon,
+        phone:     el.tags?.phone ?? el.tags?.['contact:phone'] ?? null,
+        website:   el.tags?.website ?? el.tags?.['contact:website'] ?? null,
+        hours:     el.tags?.opening_hours ?? null,
+        address:   [el.tags?.['addr:housenumber'], el.tags?.['addr:street'], el.tags?.['addr:city']].filter(Boolean).join(', ') || null,
+        operator:  el.tags?.operator ?? null,
+        emergency: el.tags?.emergency ?? null,
+        beds:      el.tags?.beds ?? null,
+      }))
+      .filter(el => el.lat && el.lng)
+  }
+
+  useEffect(() => {
+    if (!showPolice) { setPoliceMarkers([]); return }
+    setLoadingPolice(true)
+    fetchOverpassPOIs('police').then(setPoliceMarkers).finally(() => setLoadingPolice(false))
+  }, [showPolice])
+
+  useEffect(() => {
+    if (!showHospital) { setHospitalMarkers([]); return }
+    setLoadingHospital(true)
+    fetchOverpassPOIs('hospital').then(setHospitalMarkers).finally(() => setLoadingHospital(false))
+  }, [showHospital])
 
   return (
     <div className="dashboard">
       {/* ── left panel ─────────────────────────── */}
       <aside className="dash-panel">
-        {/* filter tabs */}
         <div className="filter-tabs">
           {FILTER_DEFS.map(tab => {
-            const count = tab.key === 'all' ? counts.total : counts[tab.key]
-            const active = filter === tab.key
+            const count       = tab.key === 'all' ? counts.total : counts[tab.key]
+            const active      = filter === tab.key
             const statusColor = STATUS_META[tab.key]?.color
             return (
               <button
                 key={tab.key}
                 className={`filter-tab${active ? ' active' : ''}`}
-                style={active && statusColor ? {
-                  background: statusColor,
-                  borderColor: statusColor,
-                  color: '#0A0E10',
-                } : {}}
+                style={active && statusColor ? { background: statusColor, borderColor: statusColor, color: '#0A0E10' } : {}}
                 onClick={() => setFilter(tab.key)}
               >
                 {tab.label}
@@ -170,34 +168,29 @@ export default function Dashboard({ units }) {
           })}
         </div>
 
-        {/* search */}
         <div className="dash-search">
           <SearchIcon />
           <input
             className="dash-search__input"
             type="text"
-            placeholder="Search units, principals, agents…"
+            placeholder="Search units…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
 
-        {/* unit list */}
         <ul className="unit-list" role="list">
           {filtered.length === 0 && (
-            <li className="unit-list__empty">No units match</li>
+            <li className="unit-list__empty">
+              {accounts.length === 0 ? 'Loading…' : 'No units match'}
+            </li>
           )}
 
           {groups.vehicles.length > 0 && (
             <>
               <UnitGroupHeader label="VEHICLES" count={groups.vehicles.length} />
               {groups.vehicles.map(unit => (
-                <UnitCardItem
-                  key={unit.id}
-                  unit={unit}
-                  selected={unit.id === selectedId}
-                  onSelect={selectUnit}
-                />
+                <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
               ))}
             </>
           )}
@@ -206,12 +199,7 @@ export default function Dashboard({ units }) {
             <>
               <UnitGroupHeader label="PEOPLE" count={groups.people.length} />
               {groups.people.map(unit => (
-                <UnitCardItem
-                  key={unit.id}
-                  unit={unit}
-                  selected={unit.id === selectedId}
-                  onSelect={selectUnit}
-                />
+                <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
               ))}
             </>
           )}
@@ -231,7 +219,6 @@ export default function Dashboard({ units }) {
           <NavigationControl position="bottom-right" showCompass={false} />
           <AttributionControl compact position="bottom-left" />
 
-          {/* Police station markers */}
           {policeMarkers.map(poi => (
             <Marker key={poi.id} longitude={poi.lng} latitude={poi.lat} anchor="center"
               onClick={e => { e.originalEvent.stopPropagation(); setSelectedPOI({ ...poi, kind: 'police' }) }}>
@@ -242,7 +229,6 @@ export default function Dashboard({ units }) {
             </Marker>
           ))}
 
-          {/* Hospital markers */}
           {hospitalMarkers.map(poi => (
             <Marker key={poi.id} longitude={poi.lng} latitude={poi.lat} anchor="center"
               onClick={e => { e.originalEvent.stopPropagation(); setSelectedPOI({ ...poi, kind: 'hospital' }) }}>
@@ -253,16 +239,11 @@ export default function Dashboard({ units }) {
             </Marker>
           ))}
 
-          {/* POI detail popup */}
           {selectedPOI && (
             <Popup
-              longitude={selectedPOI.lng}
-              latitude={selectedPOI.lat}
-              anchor="bottom"
-              offset={22}
-              closeOnClick={false}
-              onClose={() => setSelectedPOI(null)}
-              className="unit-popup"
+              longitude={selectedPOI.lng} latitude={selectedPOI.lat}
+              anchor="bottom" offset={22} closeOnClick={false}
+              onClose={() => setSelectedPOI(null)} className="unit-popup"
             >
               <div className="upu">
                 <div className="upu-head">
@@ -278,58 +259,20 @@ export default function Dashboard({ units }) {
                   </span>
                 </div>
                 <div className="upu-rows">
-                  {selectedPOI.address && (
-                    <div className="upu-row">
-                      <span className="upu-key">ADDRESS</span>
-                      <span className="upu-val upu-val--wrap">{selectedPOI.address}</span>
-                    </div>
+                  {selectedPOI.address  && <UpuRow k="ADDRESS"  v={selectedPOI.address}  wrap />}
+                  {selectedPOI.phone    && <UpuRow k="PHONE"    v={<a href={`tel:${selectedPOI.phone}`} style={{ color: 'inherit' }}>{selectedPOI.phone}</a>} />}
+                  {selectedPOI.hours    && <UpuRow k="HOURS"    v={selectedPOI.hours} />}
+                  {selectedPOI.operator && <UpuRow k="OPERATOR" v={selectedPOI.operator} />}
+                  {selectedPOI.beds     && <UpuRow k="BEDS"     v={selectedPOI.beds} />}
+                  {selectedPOI.emergency && <UpuRow k="EMERGENCY" v={selectedPOI.emergency} />}
+                  {selectedPOI.website  && (
+                    <UpuRow k="WEBSITE" v={
+                      <a href={selectedPOI.website} target="_blank" rel="noreferrer" style={{ color: '#37C2B8' }}>
+                        {selectedPOI.website.replace(/^https?:\/\//, '')}
+                      </a>
+                    } />
                   )}
-                  {selectedPOI.phone && (
-                    <div className="upu-row">
-                      <span className="upu-key">PHONE</span>
-                      <span className="upu-val">
-                        <a href={`tel:${selectedPOI.phone}`} style={{ color: 'inherit' }}>{selectedPOI.phone}</a>
-                      </span>
-                    </div>
-                  )}
-                  {selectedPOI.hours && (
-                    <div className="upu-row">
-                      <span className="upu-key">HOURS</span>
-                      <span className="upu-val">{selectedPOI.hours}</span>
-                    </div>
-                  )}
-                  {selectedPOI.operator && (
-                    <div className="upu-row">
-                      <span className="upu-key">OPERATOR</span>
-                      <span className="upu-val">{selectedPOI.operator}</span>
-                    </div>
-                  )}
-                  {selectedPOI.beds && (
-                    <div className="upu-row">
-                      <span className="upu-key">BEDS</span>
-                      <span className="upu-val">{selectedPOI.beds}</span>
-                    </div>
-                  )}
-                  {selectedPOI.emergency && (
-                    <div className="upu-row">
-                      <span className="upu-key">EMERGENCY</span>
-                      <span className="upu-val">{selectedPOI.emergency}</span>
-                    </div>
-                  )}
-                  {selectedPOI.website && (
-                    <div className="upu-row">
-                      <span className="upu-key">WEBSITE</span>
-                      <span className="upu-val">
-                        <a href={selectedPOI.website} target="_blank" rel="noreferrer" style={{ color: '#37C2B8' }}>
-                          {selectedPOI.website.replace(/^https?:\/\//, '')}
-                        </a>
-                      </span>
-                    </div>
-                  )}
-                  <div className="upu-row">
-                    <span className="upu-key">COORDS</span>
-                    <span className="upu-val">{selectedPOI.lat.toFixed(5)}, {selectedPOI.lng.toFixed(5)}</span>
-                  </div>
+                  <UpuRow k="COORDS" v={`${selectedPOI.lat.toFixed(5)}, ${selectedPOI.lng.toFixed(5)}`} />
                 </div>
               </div>
             </Popup>
@@ -343,9 +286,7 @@ export default function Dashboard({ units }) {
               onClick={() => setShowPolice(v => !v)}
               disabled={loadingPolice}
             >
-              {loadingPolice
-                ? <span className="map-poi-btn__spinner" />
-                : <span className="map-poi-btn__dot" style={{ background: '#4A90E2' }} />}
+              {loadingPolice ? <span className="map-poi-btn__spinner" /> : <span className="map-poi-btn__dot" style={{ background: '#4A90E2' }} />}
               Police
             </button>
             <button
@@ -354,19 +295,17 @@ export default function Dashboard({ units }) {
               onClick={() => setShowHospital(v => !v)}
               disabled={loadingHospital}
             >
-              {loadingHospital
-                ? <span className="map-poi-btn__spinner" />
-                : <span className="map-poi-btn__dot" style={{ background: '#F2495B' }} />}
+              {loadingHospital ? <span className="map-poi-btn__spinner" /> : <span className="map-poi-btn__dot" style={{ background: '#F2495B' }} />}
               Hospital
             </button>
           </div>
 
-          {mergedUnits.map(unit => {
-            const meta    = STATUS_META[unit.status] ?? STATUS_META.offline
-            const isSel   = unit.id === selectedId
+          {/* Unit markers — only units with a live primary device position */}
+          {liveUnits.map(unit => {
+            const meta   = STATUS_META[unit.status] ?? STATUS_META.offline
+            const isSel  = unit.id === selectedId
             const isPulse = unit.status === 'warning' || unit.status === 'duress' || isSel
             const zIndex  = unit.status === 'duress' ? 8 : isSel ? 6 : 3
-
             return (
               <Marker
                 key={unit.id}
@@ -378,92 +317,54 @@ export default function Dashboard({ units }) {
               >
                 <div className={`map-marker${isSel ? ' selected' : ''} status-${unit.status}`}>
                   <div className="marker-dot-wrap">
-                    {isPulse && (
-                      <span className="marker-ring" style={{ background: meta.color }} />
-                    )}
+                    {isPulse && <span className="marker-ring" style={{ background: meta.color }} />}
                     <span
                       className="marker-dot"
                       style={{
                         background: meta.color,
                         width:  isSel || unit.status === 'duress' ? '15px' : '11px',
                         height: isSel || unit.status === 'duress' ? '15px' : '11px',
-                        boxShadow: unit.status !== 'offline'
-                          ? `0 0 0 2px ${meta.color}38, 0 0 14px ${meta.color}99`
-                          : 'none',
+                        boxShadow: `0 0 0 2px ${meta.color}38, 0 0 14px ${meta.color}99`,
                       }}
                     />
                   </div>
-                  <span
-                    className="marker-label"
-                    style={{
-                      color:       isSel ? '#EEF2F3' : '#AEB8BD',
-                      borderColor: `${meta.color}66`,
-                    }}
-                  >
-                    {unit.id} · {unit.callsign}
+                  <span className="marker-label" style={{ color: isSel ? '#EEF2F3' : '#AEB8BD', borderColor: `${meta.color}66` }}>
+                    {unit.name}
                   </span>
                 </div>
               </Marker>
             )
           })}
 
+          {/* Popup for selected unit */}
           {popupId && (() => {
-            const unit = mergedUnits.find(u => u.id === popupId)
+            const unit = displayUnits.find(u => u.id === popupId)
             if (!unit) return null
-            const meta = STATUS_META[unit.status] ?? STATUS_META.offline
+            const meta    = STATUS_META[unit.status] ?? STATUS_META.offline
+            const detailPath = `/admin/unit/${unit.type === 'person' ? 'principal' : 'vehicle'}/${unit.id}`
+            if (!unit.lat) return null
             return (
               <Popup
-                longitude={unit.lng}
-                latitude={unit.lat}
-                anchor="bottom"
-                offset={22}
-                closeOnClick={false}
-                onClose={() => setPopupId(null)}
-                className="unit-popup"
+                longitude={unit.lng} latitude={unit.lat}
+                anchor="bottom" offset={22} closeOnClick={false}
+                onClose={() => setPopupId(null)} className="unit-popup"
               >
                 <div className="upu">
                   <div className="upu-head">
                     <span className="upu-dot" style={{ background: meta.color, boxShadow: `0 0 6px ${meta.color}88` }} />
-                    <span className="upu-id">{unit.id} · {unit.callsign}</span>
+                    <span className="upu-id">{unit.name}</span>
                     <span className="upu-chip" style={{ color: meta.color, borderColor: `${meta.color}44`, background: `${meta.color}18` }}>
                       {meta.label}
                     </span>
                   </div>
                   <div className="upu-rows">
-                    <div className="upu-row">
-                      <span className="upu-key">PRINCIPAL</span>
-                      <span className="upu-val">{unit.principal}</span>
-                    </div>
-                    {unit.agent && unit.agent !== '—' && (
-                      <div className="upu-row">
-                        <span className="upu-key">AGENT</span>
-                        <span className="upu-val">{unit.agent}</span>
-                      </div>
-                    )}
-                    {unit.vehicle && (
-                      <div className="upu-row">
-                        <span className="upu-key">VEHICLE</span>
-                        <span className="upu-val">{unit.vehicle}</span>
-                      </div>
-                    )}
-                    <div className="upu-row">
-                      <span className="upu-key">LOCATION</span>
-                      <span className="upu-val">{unit.location}</span>
-                    </div>
-                    <div className="upu-row">
-                      <span className="upu-key">SPEED</span>
-                      <span className="upu-val" style={{ color: unit.status === 'offline' ? '#66727A' : undefined }}>
-                        {unit.status === 'offline' ? 'NO SIGNAL' : `${unit.speed} KPH`}
-                      </span>
-                    </div>
-                    <div className="upu-row">
-                      <span className="upu-key">UPDATED</span>
-                      <span className="upu-val" style={unit.isLive ? { color: '#37C2B8' } : undefined}>
-                        {unit.isLive ? '● LIVE' : `${unit.lastUpdated} ago`}
-                      </span>
-                    </div>
+                    {unit.accountName && <UpuRow k="ACCOUNT" v={unit.accountName} />}
+                    {unit.speed != null && <UpuRow k="SPEED" v={`${unit.speed} KPH`} />}
+                    {unit.heading != null && <UpuRow k="HEADING" v={`${unit.heading}°`} />}
+                    <UpuRow k="COORDS" v={`${unit.lat.toFixed(5)}, ${unit.lng.toFixed(5)}`} />
+                    <UpuRow k="SIGNAL" v="● LIVE" color="#37C2B8" />
                   </div>
-                  <button className="upu-open" onClick={() => navigate(`/admin/unit/${unit.id}`)}>
+                  <button className="upu-open" onClick={() => navigate(detailPath)}>
                     OPEN DETAIL →
                   </button>
                 </div>
@@ -472,6 +373,15 @@ export default function Dashboard({ units }) {
           })()}
         </Map>
       </div>
+    </div>
+  )
+}
+
+function UpuRow({ k, v, wrap, color }) {
+  return (
+    <div className="upu-row">
+      <span className="upu-key">{k}</span>
+      <span className={`upu-val${wrap ? ' upu-val--wrap' : ''}`} style={color ? { color } : undefined}>{v}</span>
     </div>
   )
 }
@@ -489,71 +399,46 @@ function UnitGroupHeader({ label, count }) {
 function UnitCardItem({ unit, selected, onSelect }) {
   const navigate = useNavigate()
   const meta     = STATUS_META[unit.status] ?? STATUS_META.offline
-  const speed    = unit.status === 'offline' ? 'NO SIGNAL' : `${unit.speed} MPH`
+  const detailPath = `/admin/unit/${unit.type === 'person' ? 'principal' : 'vehicle'}/${unit.id}`
 
   return (
     <li>
       <div
         className={`unit-card${selected ? ' selected' : ''}`}
         onClick={() => onSelect(unit.id)}
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
+        role="button" tabIndex={0} aria-pressed={selected}
         onKeyDown={e => e.key === 'Enter' && onSelect(unit.id)}
       >
-        <span
-          className="unit-card__bar"
-          style={{ background: meta.color, opacity: selected ? 1 : 0.45 }}
-        />
+        <span className="unit-card__bar" style={{ background: meta.color, opacity: selected ? 1 : 0.45 }} />
 
         <div className="unit-card__head">
-          <span
-            className="unit-card__dot"
-            style={{
-              background: meta.color,
-              boxShadow: unit.status !== 'offline' ? `0 0 8px ${meta.color}88` : 'none',
-            }}
-          />
+          <span className="unit-card__dot" style={{ background: meta.color, boxShadow: unit.isLive ? `0 0 8px ${meta.color}88` : 'none' }} />
           <span className="unit-card__type-icon" aria-label={unit.type}>
             {unit.type === 'vehicle' ? <VehicleIcon /> : <PersonIcon />}
           </span>
-          <span className="unit-card__id">{unit.id} · {unit.callsign}</span>
-          <span
-            className="unit-card__chip"
-            style={{
-              color:        meta.color,
-              background:   `${meta.color}1A`,
-              borderColor:  `${meta.color}4D`,
-            }}
-          >
+          <span className="unit-card__id">{unit.name}</span>
+          <span className="unit-card__chip" style={{ color: meta.color, background: `${meta.color}1A`, borderColor: `${meta.color}4D` }}>
             {meta.label}
           </span>
         </div>
 
-        <div className="unit-card__principal">
-          {unit.principal}
-          <span className="unit-card__role"> · {unit.principalRole}</span>
-        </div>
+        <div className="unit-card__principal">{unit.accountName}</div>
 
         <div className="unit-card__info">
-          <span className="unit-card__loc">{unit.location}</span>
-          <span
-            className="unit-card__speed"
-            style={{ color: unit.isLive ? '#37C2B8' : unit.status === 'warning' ? '#E0A63C' : undefined }}
-          >
-            {unit.isLive ? `● ${speed}` : speed}
+          <span className="unit-card__loc" style={{ color: unit.isLive ? '#37C2B8' : undefined }}>
+            {unit.isLive ? '● LIVE' : 'No signal'}
+          </span>
+          <span className="unit-card__speed" style={{ color: unit.isLive ? '#37C2B8' : '#66727A' }}>
+            {unit.isLive ? `${unit.speed} KPH` : '—'}
           </span>
         </div>
 
         {selected && (
           <div className="unit-card__footer">
             <span className="unit-card__updated" style={unit.isLive ? { color: '#37C2B8' } : undefined}>
-              {unit.isLive ? '● LIVE' : `Updated ${unit.lastUpdated} ago`}
+              {unit.isLive ? '● LIVE' : 'No signal'}
             </span>
-            <button
-              className="unit-card__open"
-              onClick={e => { e.stopPropagation(); navigate(`/admin/unit/${unit.id}`) }}
-            >
+            <button className="unit-card__open" onClick={e => { e.stopPropagation(); navigate(detailPath) }}>
               OPEN DETAIL →
             </button>
           </div>

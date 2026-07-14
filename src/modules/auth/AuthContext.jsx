@@ -1,32 +1,48 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js'
 import { userPool } from './cognito'
-import { apiUrl } from '../../shared/utils/api'
+import { apiUrl, apiFetch, setToken, clearToken } from '../../shared/utils/api'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null)
+  const [user,    setUser]    = useState(null)   // Cognito attributes
+  const [dbUser,  setDbUser]  = useState(null)   // DB record with permissions[]
   const [loading, setLoading] = useState(true)
+
+  async function fetchMe() {
+    try {
+      const res = await apiFetch(apiUrl('/api/me'))
+      if (!res.ok) return null
+      return await res.json()
+    } catch {
+      return null
+    }
+  }
 
   // Restore session on mount
   useEffect(() => {
     const cognitoUser = userPool.getCurrentUser()
     if (!cognitoUser) { setLoading(false); return }
 
-    cognitoUser.getSession((err, session) => {
+    cognitoUser.getSession(async (err, session) => {
       if (err || !session?.isValid()) { setLoading(false); return }
 
-      cognitoUser.getUserAttributes((attrErr, attrs) => {
-        if (!attrErr) setUser(attrsToObject(attrs))
+      setToken(session.getAccessToken().getJwtToken())
+
+      cognitoUser.getUserAttributes(async (attrErr, attrs) => {
+        const userObj = attrErr ? {} : attrsToObject(attrs)
+        const me = await fetchMe()
+        setUser(userObj)
+        setDbUser(me)
         setLoading(false)
       })
     })
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function provision(attrs) {
     try {
-      await fetch(apiUrl('/api/auth/provision'), {
+      await apiFetch(apiUrl('/api/auth/provision'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -47,11 +63,15 @@ export function AuthProvider({ children }) {
 
       cognitoUser.setAuthenticationFlowType('USER_PASSWORD_AUTH')
       cognitoUser.authenticateUser(authDetails, {
-        onSuccess: () => {
-          cognitoUser.getUserAttributes((err, attrs) => {
+        onSuccess: async (session) => {
+          setToken(session.getAccessToken().getJwtToken())
+
+          cognitoUser.getUserAttributes(async (err, attrs) => {
             const userObj = err ? {} : attrsToObject(attrs)
+            await provision(userObj)
+            const me = await fetchMe()
             setUser(userObj)
-            provision(userObj)
+            setDbUser(me)
             resolve({ type: 'success' })
           })
         },
@@ -66,11 +86,15 @@ export function AuthProvider({ children }) {
   function completeNewPassword(cognitoUser, newPassword) {
     return new Promise((resolve, reject) => {
       cognitoUser.completeNewPasswordChallenge(newPassword, {}, {
-        onSuccess: () => {
-          cognitoUser.getUserAttributes((err, attrs) => {
+        onSuccess: async (session) => {
+          setToken(session.getAccessToken().getJwtToken())
+
+          cognitoUser.getUserAttributes(async (err, attrs) => {
             const userObj = err ? {} : attrsToObject(attrs)
+            await provision(userObj)
+            const me = await fetchMe()
             setUser(userObj)
-            provision(userObj)
+            setDbUser(me)
             resolve()
           })
         },
@@ -81,11 +105,17 @@ export function AuthProvider({ children }) {
 
   function signOut() {
     userPool.getCurrentUser()?.signOut()
+    clearToken()
     setUser(null)
+    setDbUser(null)
+  }
+
+  function can(key) {
+    return dbUser?.permissions?.includes(key) ?? false
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user, signIn, completeNewPassword, signOut }}>
+    <AuthContext.Provider value={{ user, dbUser, can, loading, isAuthenticated: !!user, signIn, completeNewPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   )

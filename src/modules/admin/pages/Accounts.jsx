@@ -372,9 +372,10 @@ function UnitPicker({ account, currentUnitIds, onAdd }) {
 }
 
 /* ── Device form ──────────────────────────────────────────────── */
-function DeviceForm({ initial, onSave, onCancel }) {
+function DeviceForm({ initial, showPrimary, onSave, onCancel }) {
   const [form, setForm] = useState({
-    name: '', type: 'gps', model: '', serial: '', imei: '', status: 'online', ...initial,
+    name: '', type: 'gps', model: '', serial: '', imei: '', status: 'online', traccarDeviceId: '',
+    isPrimary: false, ...initial,
   })
   const ref = useRef()
   useEffect(() => { ref.current?.focus() }, [])
@@ -413,6 +414,19 @@ function DeviceForm({ initial, onSave, onCancel }) {
             placeholder="Serial number" />
         </Field>
       </div>
+      <Field label="TRACCAR DEVICE ID">
+        <input className="ac-input" value={form.traccarDeviceId} onChange={e => set('traccarDeviceId', e.target.value)}
+          placeholder="Numeric ID from Traccar (e.g. 1)" />
+      </Field>
+
+      {showPrimary && (
+        <label className="ac-dv-primary-toggle">
+          <input type="checkbox" checked={!!form.isPrimary} onChange={e => set('isPrimary', e.target.checked)} />
+          <StarIcon filled={!!form.isPrimary} />
+          <span>Set as primary tracking device</span>
+        </label>
+      )}
+
       <div className="ac-form-actions">
         <button className="ac-btn ac-btn--ghost" onClick={onCancel}>Cancel</button>
         <button className="ac-btn ac-btn--primary" disabled={!form.name.trim()} onClick={() => onSave(form)}>Save</button>
@@ -423,16 +437,25 @@ function DeviceForm({ initial, onSave, onCancel }) {
 
 /* ── DeviceManager — reusable device list + add/edit ─────────── */
 function DeviceManager({ unit, accountId }) {
-  const { createDevice, updateDevice, deleteDevice } = useAccounts()
+  const { createDevice, updateDevice, deleteDevice, setPrimaryDevice } = useAccounts()
   const [view,          setView]          = useState('list')
   const [editingDevice, setEditingDevice] = useState(null)
   const [confirmId,     setConfirmId]     = useState(null)
 
-  const devices = unit.devices ?? []
+  const devices       = unit.devices ?? []
+  const primaryDevice = devices.find(d => d.id === unit.primaryDeviceId) ?? null
+  const otherDevices  = devices.filter(d => d.id !== unit.primaryDeviceId)
 
-  function handleSave(data) {
-    if (view === 'add') createDevice(accountId, unit.id, data)
-    else                updateDevice(accountId, unit.id, editingDevice.id, data)
+  async function handleSave(data) {
+    const { isPrimary, ...deviceData } = data
+    if (view === 'add') {
+      createDevice(accountId, unit.id, deviceData)
+    } else {
+      await updateDevice(accountId, unit.id, editingDevice.id, deviceData)
+      const isCurrentPrimary = unit.primaryDeviceId === editingDevice.id
+      if (isPrimary && !isCurrentPrimary)  setPrimaryDevice(accountId, unit.id, editingDevice.id)
+      if (!isPrimary && isCurrentPrimary)  setPrimaryDevice(accountId, unit.id, null)
+    }
     setView('list')
     setEditingDevice(null)
   }
@@ -444,7 +467,8 @@ function DeviceManager({ unit, accountId }) {
       <>
         <button className="ac-dv-back" onClick={backToList}>← Back to devices</button>
         <DeviceForm
-          initial={view === 'edit' ? editingDevice : undefined}
+          initial={view === 'edit' ? { ...editingDevice, isPrimary: unit.primaryDeviceId === editingDevice?.id } : undefined}
+          showPrimary={view === 'edit'}
           onSave={handleSave}
           onCancel={backToList}
         />
@@ -466,57 +490,94 @@ function DeviceManager({ unit, accountId }) {
         </button>
       </div>
 
-      {devices.length === 0 ? (
+      {/* ── Primary device section ── */}
+      <div className="ac-dv-primary-section">
+        <div className="ac-dv-primary-section__bar">
+          <span className="ac-dv-primary-section__label">PRIMARY DEVICE</span>
+        </div>
+        {primaryDevice ? (
+          <DeviceRow
+            dev={primaryDevice}
+            isPrimary
+            onEdit={() => startEdit(primaryDevice)}
+            onDelete={() => setConfirmId(primaryDevice.id)}
+            isConfirm={confirmId === primaryDevice.id}
+            onCancelConfirm={() => setConfirmId(null)}
+            onConfirmDelete={() => { deleteDevice(accountId, unit.id, primaryDevice.id); setConfirmId(null) }}
+          />
+        ) : (
+          <div className="ac-dv-no-primary">
+            <StarIcon filled={false} />
+            <span>No primary device selected — edit a device to set it as primary</span>
+          </div>
+        )}
+        <div className="ac-dv-primary-section__bar ac-dv-primary-section__bar--bottom" />
+      </div>
+
+      {/* ── Other devices ── */}
+      {otherDevices.length === 0 && devices.length === 0 && (
         <div className="ac-empty ac-empty--inline">
           <span className="ac-empty__text">No devices assigned — click "Add Device" to provision one</span>
         </div>
-      ) : (
+      )}
+      {otherDevices.length > 0 && (
         <div className="ac-dv-list">
-          {devices.map(dev => {
-            const dt        = DEVICE_TYPES[dev.type] ?? DEVICE_TYPES.other
-            const isOnline  = dev.status === 'online'
-            const isConfirm = confirmId === dev.id
-            return (
-              <div key={dev.id} className={`ac-dv-row${isConfirm ? ' is-confirming' : ''}`}>
-                <div className="ac-dv-row__main">
-                  <span className="ac-dv-dot" style={{ background: isOnline ? '#37C2B8' : '#66727A',
-                    boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none' }} />
-                  <div className="ac-dv-info">
-                    <span className="ac-dv-name">{dev.name}</span>
-                    <div className="ac-dv-meta">
-                      <span className="ac-dv-type-chip" style={{ color: dt.color, borderColor: `${dt.color}55` }}>
-                        {dt.label}
-                      </span>
-                      {dev.model  && <span className="ac-dv-model">{dev.model}</span>}
-                      {dev.serial && <span className="ac-dv-serial">SN: {dev.serial}</span>}
-                    </div>
-                  </div>
-                  <div className="ac-dv-actions">
-                    <span className="ac-dv-status" style={{ color: isOnline ? '#37C2B8' : '#66727A' }}>
-                      {dev.status}
-                    </span>
-                    <button className="ac-icon-btn" title="Edit device" onClick={() => startEdit(dev)}>
-                      <EditIcon />
-                    </button>
-                    <button className="ac-icon-btn ac-icon-btn--danger" title="Delete device"
-                      onClick={() => setConfirmId(dev.id)}>
-                      <TrashIcon />
-                    </button>
-                  </div>
-                </div>
-                {isConfirm && (
-                  <ConfirmBar
-                    message={`Remove "${dev.name}" from this unit?`}
-                    onCancel={() => setConfirmId(null)}
-                    onConfirm={() => { deleteDevice(accountId, unit.id, dev.id); setConfirmId(null) }}
-                  />
-                )}
-              </div>
-            )
-          })}
+          {otherDevices.map(dev => (
+            <DeviceRow
+              key={dev.id}
+              dev={dev}
+              isPrimary={false}
+              onEdit={() => startEdit(dev)}
+              onDelete={() => setConfirmId(dev.id)}
+              isConfirm={confirmId === dev.id}
+              onCancelConfirm={() => setConfirmId(null)}
+              onConfirmDelete={() => { deleteDevice(accountId, unit.id, dev.id); setConfirmId(null) }}
+            />
+          ))}
         </div>
       )}
     </>
+  )
+}
+
+function DeviceRow({ dev, isPrimary, onEdit, onDelete, isConfirm, onCancelConfirm, onConfirmDelete }) {
+  const dt       = DEVICE_TYPES[dev.type] ?? DEVICE_TYPES.other
+  const isOnline = dev.status === 'online'
+  return (
+    <div className={`ac-dv-row${isConfirm ? ' is-confirming' : ''}${isPrimary ? ' ac-dv-row--primary' : ''}`}>
+      <div className="ac-dv-row__main">
+        <span className="ac-dv-dot" style={{ background: isOnline ? '#37C2B8' : '#66727A',
+          boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none' }} />
+        <div className="ac-dv-info">
+          <span className="ac-dv-name">{dev.name}</span>
+          <div className="ac-dv-meta">
+            <span className="ac-dv-type-chip" style={{ color: dt.color, borderColor: `${dt.color}55` }}>
+              {dt.label}
+            </span>
+            {dev.model  && <span className="ac-dv-model">{dev.model}</span>}
+            {dev.serial && <span className="ac-dv-serial">SN: {dev.serial}</span>}
+          </div>
+        </div>
+        <div className="ac-dv-actions">
+          <span className="ac-dv-status" style={{ color: isOnline ? '#37C2B8' : '#66727A' }}>
+            {dev.status}
+          </span>
+          <button className="ac-icon-btn" title="Edit device" onClick={onEdit}>
+            <EditIcon />
+          </button>
+          <button className="ac-icon-btn ac-icon-btn--danger" title="Delete device" onClick={onDelete}>
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
+      {isConfirm && (
+        <ConfirmBar
+          message={`Remove "${dev.name}" from this unit?`}
+          onCancel={onCancelConfirm}
+          onConfirm={onConfirmDelete}
+        />
+      )}
+    </div>
   )
 }
 
@@ -960,18 +1021,21 @@ export function AccountDetail() {
           />
         </Panel>
       )}
-      {panel?.mode === 'editUnit' && (
-        <Panel
-          title={`Edit ${panel.unit.type === 'person' ? 'Person' : 'Vehicle'}`}
-          onClose={() => setPanel(null)}>
-          <UnitEditPanel
-            unit={panel.unit}
-            accountId={accountId}
-            onSave={handleSaveUnit}
-            onCancel={() => setPanel(null)}
-          />
-        </Panel>
-      )}
+      {panel?.mode === 'editUnit' && (() => {
+        const liveUnit = account.units.find(u => u.id === panel.unit.id) ?? panel.unit
+        return (
+          <Panel
+            title={`Edit ${liveUnit.type === 'person' ? 'Person' : 'Vehicle'}`}
+            onClose={() => setPanel(null)}>
+            <UnitEditPanel
+              unit={liveUnit}
+              accountId={accountId}
+              onSave={handleSaveUnit}
+              onCancel={() => setPanel(null)}
+            />
+          </Panel>
+        )
+      })()}
       {panel?.mode === 'createGroup' && (
         <Panel title="New Group" onClose={() => setPanel(null)}>
           <NameForm label="GROUP NAME *" placeholder="e.g. Family Outing, Airport Run"
@@ -1132,6 +1196,16 @@ export function GroupDetail() {
 }
 
 /* ── icons ────────────────────────────────────────────────────── */
+function StarIcon({ filled }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <path d="M6.5 1l1.545 3.13L11.5 4.635l-2.5 2.435.59 3.44L6.5 8.885l-3.09 1.625.59-3.44L1.5 4.635l3.455-.505L6.5 1z"
+        stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"
+        fill={filled ? 'currentColor' : 'none'} />
+    </svg>
+  )
+}
+
 function EditIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { apiUrl } from '../../../shared/utils/api'
+import { apiUrl, apiFetch } from '../../../shared/utils/api'
 
 const Ctx = createContext(null)
 
@@ -8,10 +8,17 @@ export function AccountsProvider({ children }) {
   const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
-    fetch(apiUrl('/api/accounts'))
-      .then(r => r.json())
+    apiFetch(apiUrl('/api/accounts'))
+      .then(async r => {
+        const data = await r.json()
+        if (!r.ok) {
+          console.error('[AccountsContext] GET /api/accounts failed', r.status, data)
+          return []
+        }
+        return data
+      })
       .then(data => { setAccounts(Array.isArray(data) ? data : []) })
-      .catch(console.error)
+      .catch(err => console.error('[AccountsContext] fetch error:', err))
       .finally(() => setLoading(false))
   }, [])
 
@@ -21,7 +28,7 @@ export function AccountsProvider({ children }) {
 
   // ── Account ──────────────────────────────────────────────────
   async function createAccount(data) {
-    const res = await fetch(apiUrl('/api/accounts'), {
+    const res = await apiFetch(apiUrl('/api/accounts'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: data.name, type: data.type, industry: data.industry, status: data.status,
@@ -34,7 +41,7 @@ export function AccountsProvider({ children }) {
   }
 
   async function updateAccount(id, data) {
-    const res = await fetch(apiUrl(`/api/accounts/${id}`), {
+    const res = await apiFetch(apiUrl(`/api/accounts/${id}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: data.name, type: data.type, industry: data.industry, status: data.status,
@@ -46,7 +53,7 @@ export function AccountsProvider({ children }) {
   }
 
   async function deleteAccount(id) {
-    await fetch(apiUrl(`/api/accounts/${id}`), { method: 'DELETE' })
+    await apiFetch(apiUrl(`/api/accounts/${id}`), { method: 'DELETE' })
     setAccounts(p => p.filter(a => a.id !== id))
   }
 
@@ -55,7 +62,7 @@ export function AccountsProvider({ children }) {
     const endpoint = data.type === 'person'
       ? `/api/accounts/${accountId}/principals`
       : `/api/accounts/${accountId}/vehicles`
-    const res = await fetch(apiUrl(endpoint), {
+    const res = await apiFetch(apiUrl(endpoint), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
@@ -69,7 +76,7 @@ export function AccountsProvider({ children }) {
     const endpoint = type === 'person'
       ? `/api/accounts/${accountId}/principals/${unitId}`
       : `/api/accounts/${accountId}/vehicles/${unitId}`
-    const res = await fetch(apiUrl(endpoint), {
+    const res = await apiFetch(apiUrl(endpoint), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
@@ -84,7 +91,7 @@ export function AccountsProvider({ children }) {
     const endpoint = type === 'person'
       ? `/api/accounts/${accountId}/principals/${unitId}`
       : `/api/accounts/${accountId}/vehicles/${unitId}`
-    await fetch(apiUrl(endpoint), { method: 'DELETE' })
+    await apiFetch(apiUrl(endpoint), { method: 'DELETE' })
     setAccounts(p => p.map(a => a.id !== accountId ? a : {
       ...a,
       units:  a.units.filter(u => u.id !== unitId),
@@ -94,7 +101,7 @@ export function AccountsProvider({ children }) {
 
   // ── Device ───────────────────────────────────────────────────
   async function createDevice(accountId, unitId, data) {
-    const res = await fetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices`), {
+    const res = await apiFetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
@@ -105,7 +112,7 @@ export function AccountsProvider({ children }) {
   }
 
   async function updateDevice(accountId, unitId, deviceId, data) {
-    const res = await fetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices/${deviceId}`), {
+    const res = await apiFetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices/${deviceId}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
@@ -117,8 +124,19 @@ export function AccountsProvider({ children }) {
     }))
   }
 
+  async function setPrimaryDevice(accountId, unitId, deviceId) {
+    const res = await apiFetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/primary-device`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId }),
+    })
+    const { primaryDeviceId } = await res.json()
+    setAccounts(p => p.map(a => a.id !== accountId ? a : {
+      ...a, units: a.units.map(u => u.id !== unitId ? u : { ...u, primaryDeviceId }),
+    }))
+  }
+
   async function deleteDevice(accountId, unitId, deviceId) {
-    await fetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices/${deviceId}`), { method: 'DELETE' })
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/units/${unitId}/devices/${deviceId}`), { method: 'DELETE' })
     setAccounts(p => p.map(a => a.id !== accountId ? a : {
       ...a, units: a.units.map(u => u.id !== unitId ? u : {
         ...u, devices: (u.devices ?? []).filter(d => d.id !== deviceId),
@@ -128,7 +146,7 @@ export function AccountsProvider({ children }) {
 
   // ── Group ─────────────────────────────────────────────────────
   async function createGroup(accountId, name) {
-    const res = await fetch(apiUrl(`/api/accounts/${accountId}/groups`), {
+    const res = await apiFetch(apiUrl(`/api/accounts/${accountId}/groups`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     })
@@ -138,7 +156,7 @@ export function AccountsProvider({ children }) {
   }
 
   async function renameGroup(accountId, groupId, name) {
-    await fetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}`), {
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}`), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     })
@@ -148,7 +166,7 @@ export function AccountsProvider({ children }) {
   }
 
   async function deleteGroup(accountId, groupId) {
-    await fetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}`), { method: 'DELETE' })
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}`), { method: 'DELETE' })
     setAccounts(p => p.map(a => a.id !== accountId ? a : {
       ...a, groups: a.groups.filter(g => g.id !== groupId),
     }))
@@ -157,7 +175,7 @@ export function AccountsProvider({ children }) {
   // ── Group membership ──────────────────────────────────────────
   async function addUnitToGroup(accountId, groupId, unitId) {
     const type = unitKind(accountId, unitId)
-    await fetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}/members`), {
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}/members`), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(type === 'person' ? { principalId: unitId } : { vehicleId: unitId }),
     })
@@ -169,7 +187,7 @@ export function AccountsProvider({ children }) {
 
   async function removeUnitFromGroup(accountId, groupId, unitId) {
     const type = unitKind(accountId, unitId)
-    await fetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}/members`), {
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/groups/${groupId}/members`), {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(type === 'person' ? { principalId: unitId } : { vehicleId: unitId }),
     })
@@ -184,7 +202,7 @@ export function AccountsProvider({ children }) {
       accounts, loading,
       createAccount, updateAccount, deleteAccount,
       createUnit, updateUnit, deleteUnit,
-      createDevice, updateDevice, deleteDevice,
+      createDevice, updateDevice, deleteDevice, setPrimaryDevice,
       createGroup, renameGroup, deleteGroup,
       addUnitToGroup, removeUnitFromGroup,
     }}>

@@ -12,12 +12,13 @@ import {
   AdminCreateUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 import { db } from '../db/index.js'
-import { users, invitations, employeeProfiles, activityLogs } from '../db/schema/users.js'
-import { accounts, principals, vehicles, groups, groupMembers, devices } from '../db/schema/accounts.js'
-import { eq, and, or, getTableColumns, desc, inArray } from 'drizzle-orm'
+import { users, invitations, employeeProfiles, activityLogs, roles, rolePermissions } from '../db/schema/users.js'
+import { accounts, principals, vehicles, groups, groupMembers, devices, userScopeAssignments } from '../db/schema/accounts.js'
+import { eq, and, or, getTableColumns, desc, inArray, ne } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { trackEvent } from './trackEvent.js'
 import { startTraccar, getPositionCache, addSseClient, removeSseClient, fetchTraccarDevices, fetchTraccarPositions, createTraccarDevice, deleteTraccarDevice } from './traccar.js'
+import { authenticate, requirePermission } from './auth.js'
 import { randomUUID } from 'node:crypto'
 
 const app  = express()
@@ -63,12 +64,19 @@ app.post('/api/auth/provision', async (req, res) => {
       .where(and(eq(invitations.email, email), eq(invitations.status, 'pending')))
       .limit(1)
 
+    // Resolve roleId: use invitation's roleId, else fall back to Operator
+    let resolvedRoleId = invitation?.roleId ?? null
+    if (!resolvedRoleId) {
+      const [op] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, 'Operator')).limit(1)
+      resolvedRoleId = op?.id ?? null
+    }
+
     const [newUser] = await db.insert(users).values({
       cognitoSub,
       name:         invitation?.name ?? name ?? email,
       email,
       type:         invitation?.type ?? 'internal',
-      role:         invitation?.role ?? 'Operator',
+      roleId:       resolvedRoleId,
       addedBy:      invitation?.invitedBy ?? null,
       lastActiveAt: new Date(),
     }).returning()
@@ -88,7 +96,22 @@ app.post('/api/auth/provision', async (req, res) => {
   }
 })
 
-app.post('/api/users', async (req, res) => {
+app.get('/api/me', authenticate, async (req, res) => {
+  try {
+    const [user] = await db
+      .select({ ...getTableColumns(users), role: roles.name, roleColor: roles.color })
+      .from(users)
+      .leftJoin(roles, eq(users.roleId, roles.id))
+      .where(eq(users.id, req.caller.id))
+      .limit(1)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    res.json({ ...user, permissions: req.caller.permissions })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/users', ...requirePermission('admin'), async (req, res) => {
   const { name, email, inviterSub } = req.body
   if (!name || !email) {
     return res.status(400).json({ error: 'Name and email are required.' })
@@ -115,11 +138,18 @@ app.post('/api/users', async (req, res) => {
       DesiredDeliveryMediums: ['EMAIL'],
     }))
 
+    // Resolve roleId: use provided roleId or fall back to Operator
+    let inviteRoleId = req.body.roleId ?? null
+    if (!inviteRoleId) {
+      const [op] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, 'Operator')).limit(1)
+      inviteRoleId = op?.id ?? null
+    }
+
     const [invitation] = await db.insert(invitations).values({
       email,
       name,
-      type:      req.body.type ?? 'internal',
-      role:      req.body.role ?? 'Operator',
+      type:     req.body.type ?? 'internal',
+      roleId:   inviteRoleId,
       invitedBy,
     }).returning()
 
@@ -127,16 +157,10 @@ app.post('/api/users', async (req, res) => {
       event:       'user.invite_sent',
       description: `${inviterName ?? 'System'} invited ${name}`,
       actorId:     invitedBy,
-      metadata:    { email, role: invitation.role, type: invitation.type },
+      metadata:    { email, roleId: invitation.roleId, type: invitation.type },
     })
 
-    res.json({
-      id:     invitation.id,
-      name,
-      email,
-      role:   invitation.role,
-      status: 'pending',
-    })
+    res.json({ id: invitation.id, name, email, roleId: invitation.roleId, status: 'pending' })
   } catch (err) {
     if (err.name === 'UsernameExistsException' || err.cause?.code === '23505') {
       return res.status(409).json({ error: 'A user with this email already exists.' })
@@ -146,15 +170,13 @@ app.post('/api/users', async (req, res) => {
   }
 })
 
-app.patch('/api/users/:id', async (req, res) => {
+app.patch('/api/users/:id', ...requirePermission('admin'), async (req, res) => {
   const { id } = req.params
-  const { name, email, phone, role, twoFactor, jobTitle, department, employeeId, actorSub } = req.body
+  const { name, email, phone, roleId, twoFactor, jobTitle, department, employeeId, actorSub } = req.body
   try {
-    // Fetch current user before update so we can detect role changes
     const [current] = await db.select().from(users).where(eq(users.id, id)).limit(1)
     if (!current) return res.status(404).json({ error: 'User not found.' })
 
-    // Resolve actor from their Cognito sub
     let actorId   = null
     let actorName = null
     if (actorSub) {
@@ -163,12 +185,25 @@ app.patch('/api/users/:id', async (req, res) => {
       actorName = actor?.name ?? null
     }
 
+    // Resolve old and new role names for change tracking
+    let currentRoleName = null
+    if (current.roleId) {
+      const [cr] = await db.select({ name: roles.name }).from(roles).where(eq(roles.id, current.roleId)).limit(1)
+      currentRoleName = cr?.name ?? null
+    }
+    let newRoleName = undefined
+    if (roleId !== undefined) {
+      const [roleRow] = await db.select({ name: roles.name }).from(roles).where(eq(roles.id, roleId)).limit(1)
+      if (!roleRow) return res.status(400).json({ error: 'Invalid roleId' })
+      newRoleName = roleRow.name
+    }
+
     const [updated] = await db.update(users)
       .set({
         ...(name      !== undefined && { name }),
         ...(email     !== undefined && { email }),
         ...(phone     !== undefined && { phone }),
-        ...(role      !== undefined && { role }),
+        ...(roleId    !== undefined && { roleId }),
         ...(twoFactor !== undefined && { twoFactor }),
         updatedAt: new Date(),
       })
@@ -188,18 +223,16 @@ app.patch('/api/users/:id', async (req, res) => {
         })
     }
 
-    // Track role change separately with from/to metadata
-    if (role !== undefined && role !== current.role) {
+    if (newRoleName !== undefined && newRoleName !== currentRoleName) {
       trackEvent({
         event:       'member.role_changed',
-        description: `${actorName ?? 'System'} changed role of ${current.name} from ${current.role} to ${role}`,
+        description: `${actorName ?? 'System'} changed role of ${current.name} from ${currentRoleName ?? 'none'} to ${newRoleName}`,
         actorId,
         subjectId:   id,
-        metadata:    { from: current.role, to: role },
+        metadata:    { from: currentRoleName, to: newRoleName },
       })
     }
 
-    // Track general profile update (for any non-role field changes)
     const profileFields = [name, email, phone, twoFactor, jobTitle, department, employeeId]
       .map((v, i) => v !== undefined ? ['name','email','phone','twoFactor','jobTitle','department','employeeId'][i] : null)
       .filter(Boolean)
@@ -220,16 +253,19 @@ app.patch('/api/users/:id', async (req, res) => {
   }
 })
 
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', ...requirePermission('admin'), async (req, res) => {
   try {
     const result = await db
       .select({
         ...getTableColumns(users),
+        role:       roles.name,
+        roleColor:  roles.color,
         jobTitle:   employeeProfiles.jobTitle,
         department: employeeProfiles.department,
         employeeId: employeeProfiles.employeeId,
       })
       .from(users)
+      .leftJoin(roles, eq(users.roleId, roles.id))
       .leftJoin(employeeProfiles, eq(employeeProfiles.userId, users.id))
     res.json(result)
   } catch (err) {
@@ -238,7 +274,7 @@ app.get('/api/users', async (req, res) => {
   }
 })
 
-app.post('/api/invitations/:id/resend', async (req, res) => {
+app.post('/api/invitations/:id/resend', ...requirePermission('admin'), async (req, res) => {
   try {
     const [invitation] = await db.select().from(invitations).where(eq(invitations.id, req.params.id)).limit(1)
     if (!invitation) return res.status(404).json({ error: 'Invitation not found.' })
@@ -262,9 +298,25 @@ app.post('/api/invitations/:id/resend', async (req, res) => {
   }
 })
 
-app.get('/api/invitations', async (req, res) => {
+app.get('/api/invitations', ...requirePermission('admin'), async (req, res) => {
   try {
-    const result = await db.select().from(invitations).where(eq(invitations.status, 'pending'))
+    const result = await db
+      .select({
+        id:         invitations.id,
+        email:      invitations.email,
+        name:       invitations.name,
+        type:       invitations.type,
+        roleId:     invitations.roleId,
+        invitedBy:  invitations.invitedBy,
+        invitedAt:  invitations.invitedAt,
+        acceptedAt: invitations.acceptedAt,
+        status:     invitations.status,
+        role:       roles.name,
+        roleColor:  roles.color,
+      })
+      .from(invitations)
+      .leftJoin(roles, eq(invitations.roleId, roles.id))
+      .where(eq(invitations.status, 'pending'))
     res.json(result)
   } catch (err) {
     console.error('Get invitations error:', err)
@@ -272,7 +324,7 @@ app.get('/api/invitations', async (req, res) => {
   }
 })
 
-app.get('/api/users/:id/logs', async (req, res) => {
+app.get('/api/users/:id/logs', ...requirePermission('logs'), async (req, res) => {
   try {
     const { id } = req.params
     const actor   = alias(users, 'actor')
@@ -310,7 +362,7 @@ app.get('/api/users/:id/logs', async (req, res) => {
   }
 })
 
-app.get('/api/logs', async (req, res) => {
+app.get('/api/logs', ...requirePermission('logs'), async (req, res) => {
   try {
     const actor   = alias(users, 'actor')
     const subject = alias(users, 'subject')
@@ -377,6 +429,7 @@ async function buildAccount(account) {
       id: p.id, type: 'person',
       name: p.name, role: p.role, phone: p.phone, email: p.email,
       status: p.status, photoKey: p.photoKey,
+      primaryDeviceId: p.primaryDeviceId ?? null,
       devices: allDevices.filter(d => d.principalId === p.id).map(serializeDevice),
       emergency: {
         dob: p.dob, height: p.height, bloodGroup: p.bloodGroup,
@@ -390,6 +443,7 @@ async function buildAccount(account) {
       name: v.callsign, make: v.make, model: v.model,
       plate: v.plate, armorLevel: v.armorLevel,
       status: v.status, photoKey: v.photoKey,
+      primaryDeviceId: v.primaryDeviceId ?? null,
       devices: allDevices.filter(d => d.vehicleId === v.id).map(serializeDevice),
     })),
   ]
@@ -405,8 +459,118 @@ async function buildAccount(account) {
   }
 }
 
+/* ── roles ────────────────────────────────────────────────────── */
+app.get('/api/roles', ...requirePermission('admin'), async (req, res) => {
+  try {
+    const allRoles = await db.select().from(roles).orderBy(roles.createdAt)
+    const allPerms = await db.select().from(rolePermissions)
+    res.json(allRoles.map(r => ({
+      ...r,
+      permissions: allPerms.filter(p => p.roleId === r.id).map(p => p.permission),
+    })))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/roles', ...requirePermission('admin'), async (req, res) => {
+  const { name, description, color, permissions = [] } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' })
+  try {
+    const [role] = await db.insert(roles)
+      .values({ name: name.trim(), description, color: color ?? '#66727A', isSystem: false })
+      .returning()
+    if (permissions.length > 0) {
+      await db.insert(rolePermissions).values(permissions.map(p => ({ roleId: role.id, permission: p })))
+    }
+    res.json({ ...role, permissions })
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A role with this name already exists' })
+    console.error(err); res.status(500).json({ error: err.message })
+  }
+})
+
+app.patch('/api/roles/:id', ...requirePermission('admin'), async (req, res) => {
+  const { id } = req.params
+  const { name, description, color, permissions } = req.body
+  try {
+    const [existing] = await db.select().from(roles).where(eq(roles.id, id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Role not found' })
+    if (existing.isSystem && name !== undefined && name.trim() !== existing.name) {
+      return res.status(403).json({ error: 'Cannot rename a system role' })
+    }
+
+    const [updated] = await db.update(roles).set({
+      ...(!existing.isSystem && name !== undefined && { name: name.trim() }),
+      ...(description !== undefined && { description }),
+      ...(color       !== undefined && { color }),
+    }).where(eq(roles.id, id)).returning()
+
+    if (permissions !== undefined) {
+      await db.delete(rolePermissions).where(eq(rolePermissions.roleId, id))
+      if (permissions.length > 0) {
+        await db.insert(rolePermissions).values(permissions.map(p => ({ roleId: id, permission: p })))
+      }
+    }
+
+    const perms = await db.select().from(rolePermissions).where(eq(rolePermissions.roleId, id))
+    res.json({ ...updated, permissions: perms.map(p => p.permission) })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/roles/:id', ...requirePermission('admin'), async (req, res) => {
+  const { id } = req.params
+  try {
+    const [existing] = await db.select().from(roles).where(eq(roles.id, id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Role not found' })
+    if (existing.isSystem) return res.status(403).json({ error: 'Cannot delete a system role' })
+    const [userWithRole] = await db.select({ id: users.id }).from(users).where(eq(users.roleId, id)).limit(1)
+    if (userWithRole) return res.status(409).json({ error: 'Cannot delete a role that is assigned to active users' })
+    await db.delete(roles).where(eq(roles.id, id))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── user scope assignments ───────────────────────────────────── */
+const VALID_SCOPE_TYPES = new Set(['principal', 'vehicle'])
+
+app.get('/api/users/:userId/assignments', ...requirePermission('admin'), async (req, res) => {
+  try {
+    const rows = await db.select().from(userScopeAssignments)
+      .where(eq(userScopeAssignments.userId, req.params.userId))
+      .orderBy(userScopeAssignments.createdAt)
+    res.json(rows)
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/users/:userId/assignments', ...requirePermission('admin'), async (req, res) => {
+  const { accountId, scopeType, scopeId } = req.body
+  if (!VALID_SCOPE_TYPES.has(scopeType)) return res.status(400).json({ error: 'Invalid scopeType' })
+  if (!accountId) return res.status(400).json({ error: 'accountId is required' })
+  if (!scopeId)   return res.status(400).json({ error: 'scopeId is required' })
+  try {
+    const [row] = await db.insert(userScopeAssignments)
+      .values({ userId: req.params.userId, accountId, scopeType, scopeId })
+      .onConflictDoNothing()
+      .returning()
+    if (!row) return res.status(409).json({ error: 'Assignment already exists' })
+    res.json(row)
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/users/:userId/assignments/:assignmentId', ...requirePermission('admin'), async (req, res) => {
+  try {
+    await db.delete(userScopeAssignments)
+      .where(and(
+        eq(userScopeAssignments.id, req.params.assignmentId),
+        eq(userScopeAssignments.userId, req.params.userId),
+      ))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
 /* ── accounts ─────────────────────────────────────────────────── */
-app.get('/api/accounts', async (req, res) => {
+// GET is open to any authenticated user (ops/units need fleet data to function)
+// Mutating routes require the 'accounts' permission
+app.get('/api/accounts', authenticate, async (req, res) => {
   try {
     const accs = await db.select().from(accounts).orderBy(desc(accounts.createdAt))
     const full = await Promise.all(accs.map(buildAccount))
@@ -414,7 +578,7 @@ app.get('/api/accounts', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.post('/api/accounts', async (req, res) => {
+app.post('/api/accounts', ...requirePermission('accounts'), async (req, res) => {
   const { name, type, industry, status, contactName, contactEmail, contactPhone } = req.body
   try {
     const [acc] = await db.insert(accounts).values({ name, type, industry, status, contactName, contactEmail, contactPhone }).returning()
@@ -422,7 +586,7 @@ app.post('/api/accounts', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/accounts/:id', async (req, res) => {
+app.patch('/api/accounts/:id', ...requirePermission('accounts'), async (req, res) => {
   const { name, type, industry, status, contactName, contactEmail, contactPhone } = req.body
   try {
     const [acc] = await db.update(accounts).set({
@@ -439,7 +603,7 @@ app.patch('/api/accounts/:id', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:id', async (req, res) => {
+app.delete('/api/accounts/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
     await db.delete(accounts).where(eq(accounts.id, req.params.id))
     res.json({ ok: true })
@@ -447,7 +611,7 @@ app.delete('/api/accounts/:id', async (req, res) => {
 })
 
 /* ── principals ───────────────────────────────────────────────── */
-app.post('/api/accounts/:accountId/principals', async (req, res) => {
+app.post('/api/accounts/:accountId/principals', ...requirePermission('accounts'), async (req, res) => {
   const { name, role, phone, email, status, emergency } = req.body
   try {
     const [p] = await db.insert(principals).values({
@@ -461,7 +625,7 @@ app.post('/api/accounts/:accountId/principals', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/accounts/:accountId/principals/:id', async (req, res) => {
+app.patch('/api/accounts/:accountId/principals/:id', ...requirePermission('accounts'), async (req, res) => {
   const { name, role, phone, email, status, emergency } = req.body
   try {
     const [p] = await db.update(principals).set({
@@ -482,7 +646,7 @@ app.patch('/api/accounts/:accountId/principals/:id', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:accountId/principals/:id', async (req, res) => {
+app.delete('/api/accounts/:accountId/principals/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
     await db.delete(principals).where(eq(principals.id, req.params.id))
     res.json({ ok: true })
@@ -490,7 +654,7 @@ app.delete('/api/accounts/:accountId/principals/:id', async (req, res) => {
 })
 
 /* ── vehicles ─────────────────────────────────────────────────── */
-app.post('/api/accounts/:accountId/vehicles', async (req, res) => {
+app.post('/api/accounts/:accountId/vehicles', ...requirePermission('accounts'), async (req, res) => {
   const { name, make, model, plate, armorLevel, status } = req.body
   try {
     const [v] = await db.insert(vehicles).values({
@@ -500,7 +664,7 @@ app.post('/api/accounts/:accountId/vehicles', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
+app.patch('/api/accounts/:accountId/vehicles/:id', ...requirePermission('accounts'), async (req, res) => {
   const { name, make, model, plate, armorLevel, status } = req.body
   try {
     const [v] = await db.update(vehicles).set({
@@ -516,7 +680,7 @@ app.patch('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
+app.delete('/api/accounts/:accountId/vehicles/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
     await db.delete(vehicles).where(eq(vehicles.id, req.params.id))
     res.json({ ok: true })
@@ -524,21 +688,21 @@ app.delete('/api/accounts/:accountId/vehicles/:id', async (req, res) => {
 })
 
 /* ── groups ───────────────────────────────────────────────────── */
-app.post('/api/accounts/:accountId/groups', async (req, res) => {
+app.post('/api/accounts/:accountId/groups', ...requirePermission('accounts'), async (req, res) => {
   try {
     const [g] = await db.insert(groups).values({ accountId: req.params.accountId, name: req.body.name }).returning()
     res.json({ id: g.id, name: g.name, unitIds: [] })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/accounts/:accountId/groups/:id', async (req, res) => {
+app.patch('/api/accounts/:accountId/groups/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
     const [g] = await db.update(groups).set({ name: req.body.name }).where(eq(groups.id, req.params.id)).returning()
     res.json({ id: g.id, name: g.name })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:accountId/groups/:id', async (req, res) => {
+app.delete('/api/accounts/:accountId/groups/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
     await db.delete(groups).where(eq(groups.id, req.params.id))
     res.json({ ok: true })
@@ -546,7 +710,7 @@ app.delete('/api/accounts/:accountId/groups/:id', async (req, res) => {
 })
 
 /* ── group members ────────────────────────────────────────────── */
-app.post('/api/accounts/:accountId/groups/:groupId/members', async (req, res) => {
+app.post('/api/accounts/:accountId/groups/:groupId/members', ...requirePermission('accounts'), async (req, res) => {
   const { principalId, vehicleId } = req.body
   try {
     await db.insert(groupMembers).values({ groupId: req.params.groupId, principalId: principalId ?? null, vehicleId: vehicleId ?? null })
@@ -554,7 +718,7 @@ app.post('/api/accounts/:accountId/groups/:groupId/members', async (req, res) =>
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:accountId/groups/:groupId/members', async (req, res) => {
+app.delete('/api/accounts/:accountId/groups/:groupId/members', ...requirePermission('accounts'), async (req, res) => {
   const { principalId, vehicleId } = req.body
   try {
     if (principalId) {
@@ -567,7 +731,7 @@ app.delete('/api/accounts/:accountId/groups/:groupId/members', async (req, res) 
 })
 
 /* ── devices ──────────────────────────────────────────────────── */
-app.post('/api/accounts/:accountId/units/:unitId/devices', async (req, res) => {
+app.post('/api/accounts/:accountId/units/:unitId/devices', ...requirePermission('accounts'), async (req, res) => {
   const { unitId } = req.params
   const { name, type, model, serial, imei, firmware, status } = req.body
   try {
@@ -592,7 +756,7 @@ app.post('/api/accounts/:accountId/units/:unitId/devices', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (req, res) => {
+app.patch('/api/accounts/:accountId/units/:unitId/devices/:deviceId', ...requirePermission('accounts'), async (req, res) => {
   const { name, type, model, serial, imei, firmware, status, traccarDeviceId } = req.body
   try {
     const [d] = await db.update(devices).set({
@@ -610,7 +774,7 @@ app.patch('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (req
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (req, res) => {
+app.delete('/api/accounts/:accountId/units/:unitId/devices/:deviceId', ...requirePermission('accounts'), async (req, res) => {
   try {
     const [d] = await db.select().from(devices).where(eq(devices.id, req.params.deviceId)).limit(1)
     if (d?.traccarDeviceId) {
@@ -625,8 +789,24 @@ app.delete('/api/accounts/:accountId/units/:unitId/devices/:deviceId', async (re
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
+app.patch('/api/accounts/:accountId/units/:unitId/primary-device', ...requirePermission('accounts'), async (req, res) => {
+  const { unitId } = req.params
+  const { deviceId } = req.body   // null to clear
+  try {
+    const [p] = await db.select().from(principals).where(eq(principals.id, unitId)).limit(1)
+    if (p) {
+      const [updated] = await db.update(principals).set({ primaryDeviceId: deviceId ?? null }).where(eq(principals.id, unitId)).returning()
+      return res.json({ primaryDeviceId: updated.primaryDeviceId })
+    }
+    const [updated] = await db.update(vehicles).set({ primaryDeviceId: deviceId ?? null }).where(eq(vehicles.id, unitId)).returning()
+    res.json({ primaryDeviceId: updated.primaryDeviceId })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
 /* ── traccar ──────────────────────────────────────────────────── */
-app.get('/api/live', (req, res) => {
+app.use('/api/traccar', ...requirePermission('ops'))
+
+app.get('/api/live', authenticate, (req, res) => {
   res.setHeader('Content-Type',  'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection',    'keep-alive')
@@ -656,6 +836,16 @@ app.get('/api/traccar/positions/:deviceId', async (req, res) => {
     console.error('[traccar] positions error:', err.message)
     res.status(502).json({ error: err.message })
   }
+})
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[server] Express error handler:', err)
+  res.status(500).json({ error: 'Internal server error' })
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled rejection:', reason)
 })
 
 app.listen(PORT, () => {

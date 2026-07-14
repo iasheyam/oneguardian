@@ -910,7 +910,9 @@
   flex-shrink: 0;
 }
 .ac-icon-btn:hover { background: var(--adm-bg-raised); border-color: var(--adm-secure); color: var(--adm-secure); }
-.ac-icon-btn--danger:hover { background: rgba(242, 73, 91, 0.08); border-color: #F2495B; color: #F2495B; }
+.ac-icon-btn--danger:hover  { background: rgba(242, 73, 91, 0.08); border-color: #F2495B; color: #F2495B; }
+.ac-icon-btn--primary       { color: #E0A63C; }
+.ac-icon-btn--primary:hover { background: rgba(224, 166, 60, 0.1); color: #E0A63C; }
 
 /* inline card action group */
 .ac-card-actions {
@@ -1745,6 +1747,90 @@
   letter-spacing: 0.06em;
   margin-right: 4px;
 }
+
+/* ── primary device section ─────────────────────── */
+.ac-dv-primary-section {
+  margin-bottom: 8px;
+}
+
+.ac-dv-primary-section__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+.ac-dv-primary-section__bar::before,
+.ac-dv-primary-section__bar::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(224, 166, 60, 0.3);
+}
+.ac-dv-primary-section__bar--bottom::before,
+.ac-dv-primary-section__bar--bottom::after {
+  background: rgba(255,255,255,0.08);
+}
+.ac-dv-primary-section__label {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #E0A63C;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ac-dv-row--primary {
+  border-color: rgba(224, 166, 60, 0.25);
+  background: rgba(224, 166, 60, 0.04);
+}
+.ac-dv-row--primary:hover { border-color: rgba(224, 166, 60, 0.45); }
+
+.ac-dv-no-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--adm-text-muted);
+  font-size: 11px;
+}
+.ac-dv-no-primary svg {
+  flex-shrink: 0;
+  opacity: 0.4;
+}
+
+/* ── primary toggle in DeviceForm ─────────────────────── */
+.ac-dv-primary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 4px 0 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+.ac-dv-primary-toggle:hover {
+  border-color: rgba(224, 166, 60, 0.3);
+  background: rgba(224, 166, 60, 0.04);
+}
+.ac-dv-primary-toggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #E0A63C;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.ac-dv-primary-toggle span {
+  font-size: 12px;
+  color: var(--adm-text-secondary);
+}
+.ac-dv-primary-toggle:has(input:checked) { border-color: rgba(224, 166, 60, 0.4); }
+.ac-dv-primary-toggle:has(input:checked) span { color: #E0A63C; }
 
 /* ── blood group chip ─────────────────────── */
 .ac-blood-chip {

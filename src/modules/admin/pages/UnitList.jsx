@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAccounts } from '../contexts/AccountsContext'
+import { useLivePositions } from '../../../shared/hooks/useLivePositions'
 import './UnitList.css'
 
 const STATUS_META = {
@@ -9,9 +11,45 @@ const STATUS_META = {
   offline: { color: '#66727A', label: 'OFFLINE' },
 }
 
-export default function UnitList({ units }) {
-  const vehicles = useMemo(() => sortByStatus(units.filter(u => u.type === 'vehicle')), [units])
-  const people   = useMemo(() => sortByStatus(units.filter(u => u.type === 'person')),  [units])
+export default function UnitList() {
+  const { accounts } = useAccounts()
+  const positions    = useLivePositions()
+
+  const allUnits = useMemo(() => {
+    const result = []
+    for (const acc of accounts) {
+      for (const unit of acc.units ?? []) {
+        const primaryDev = unit.devices?.find(d => d.id === unit.primaryDeviceId)
+        const traccarId  = primaryDev?.traccarDeviceId
+                         ?? unit.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId
+                         ?? null
+        const pos = traccarId ? positions[traccarId] : null
+        result.push({
+          id:          unit.id,
+          name:        unit.name,
+          type:        unit.type,
+          status:      unit.status ?? 'offline',
+          accountName: acc.name,
+          deviceCount: unit.devices?.length ?? 0,
+          isLive:      !!pos,
+          speed:       pos ? Math.round(pos.speed * 1.852) : null,
+          heading:     pos?.course ?? null,
+        })
+      }
+    }
+    return result
+  }, [accounts, positions])
+
+  const vehicles = useMemo(() => sortByStatus(allUnits.filter(u => u.type === 'vehicle')), [allUnits])
+  const people   = useMemo(() => sortByStatus(allUnits.filter(u => u.type === 'person')),  [allUnits])
+
+  if (allUnits.length === 0 && accounts.length === 0) {
+    return <div className="unit-list-page"><div className="ul-empty">Loading…</div></div>
+  }
+
+  if (allUnits.length === 0) {
+    return <div className="unit-list-page"><div className="ul-empty">No units found — add units via Accounts.</div></div>
+  }
 
   return (
     <div className="unit-list-page">
@@ -45,137 +83,62 @@ export default function UnitList({ units }) {
 }
 
 function UnitCard({ unit }) {
-  const navigate = useNavigate()
-  const meta     = STATUS_META[unit.status] ?? STATUS_META.offline
-  const speed    = unit.status === 'offline' ? 'NO SIGNAL' : `${unit.speed} MPH`
-  const next     = unit.schedule?.find(s => s.status === 'upcoming' || s.status === 'active')
-  const battLabel = unit.type === 'vehicle' ? 'FUEL' : 'BATTERY'
-  const battVal   = unit.type === 'vehicle' ? unit.fuel : unit.battery
+  const navigate   = useNavigate()
+  const meta       = STATUS_META[unit.status] ?? STATUS_META.offline
+  const detailPath = `/admin/unit/${unit.type === 'person' ? 'principal' : 'vehicle'}/${unit.id}`
 
   return (
     <article
       className={`ul-card status-${unit.status}`}
-      onClick={() => navigate(`/admin/unit/${unit.id}`)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && navigate(`/admin/unit/${unit.id}`)}
-      aria-label={`${unit.id} ${unit.callsign} — ${meta.label}`}
+      onClick={() => navigate(detailPath)}
+      role="button" tabIndex={0}
+      onKeyDown={e => e.key === 'Enter' && navigate(detailPath)}
+      aria-label={`${unit.name} — ${meta.label}`}
     >
-      {/* accent bar */}
       <span className="ul-card__bar" style={{ background: meta.color }} />
 
-      {/* top row */}
       <div className="ul-card__top">
         <div className="ul-card__id-row">
-          <span
-            className="ul-card__dot"
-            style={{
-              background: meta.color,
-              boxShadow: unit.status !== 'offline' ? `0 0 8px ${meta.color}99` : 'none',
-            }}
-          />
-          <span className="ul-card__id">{unit.id}</span>
-          <span className="ul-card__callsign">{unit.callsign}</span>
+          <span className="ul-card__dot" style={{ background: meta.color, boxShadow: unit.isLive ? `0 0 8px ${meta.color}99` : 'none' }} />
+          <span className="ul-card__id">{unit.name}</span>
         </div>
-        <span
-          className="ul-card__chip"
-          style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}44` }}
-        >
+        <span className="ul-card__chip" style={{ color: meta.color, background: `${meta.color}18`, borderColor: `${meta.color}44` }}>
           {meta.label}
         </span>
       </div>
 
-      {/* type icon + principal */}
       <div className="ul-card__who">
         <span className="ul-card__type-icon">
           {unit.type === 'vehicle' ? <VehicleIcon /> : <PersonIcon />}
         </span>
         <div className="ul-card__principal-block">
-          <span className="ul-card__principal">{unit.principal}</span>
-          <span className="ul-card__role">{unit.principalRole}</span>
+          <span className="ul-card__principal">{unit.accountName}</span>
+          <span className="ul-card__role">{unit.deviceCount} device{unit.deviceCount !== 1 ? 's' : ''}</span>
         </div>
       </div>
-
-      {/* agent (vehicles only) */}
-      {unit.type === 'vehicle' && unit.agent && unit.agent !== '—' && (
-        <div className="ul-card__agent">
-          <AgentIcon />
-          <span>{unit.agent}</span>
-        </div>
-      )}
-
-      {/* vehicle info */}
-      {unit.type === 'vehicle' && (
-        <div className="ul-card__vehicle">{unit.vehicle} · {unit.armorLevel}</div>
-      )}
 
       <div className="ul-card__divider" />
 
-      {/* location + speed */}
       <div className="ul-card__location">
         <LocationIcon />
-        <span className="ul-card__loc-text">{unit.location}</span>
-      </div>
-      <div className="ul-card__speed-row">
-        <span
-          className="ul-card__speed"
-          style={{ color: unit.status === 'warning' ? '#E0A63C' : unit.status === 'offline' ? '#66727A' : '#DFE4E6' }}
-        >
-          {speed}
+        <span className="ul-card__loc-text" style={{ color: unit.isLive ? '#37C2B8' : undefined }}>
+          {unit.isLive ? 'LIVE TRACKING' : 'No signal'}
         </span>
-        {unit.status !== 'offline' && unit.heading > 0 && (
-          <span className="ul-card__heading">HDG {unit.heading}°</span>
-        )}
       </div>
 
-      {/* next schedule item */}
-      {next && (
-        <div className="ul-card__next">
-          <ClockIcon />
-          <span className="ul-card__next-time">{next.time}</span>
-          <span className="ul-card__next-label">{next.label}</span>
+      {unit.isLive && (
+        <div className="ul-card__speed-row">
+          <span className="ul-card__speed" style={{ color: '#37C2B8' }}>{unit.speed} KPH</span>
+          {unit.heading != null && unit.heading > 0 && (
+            <span className="ul-card__heading">HDG {unit.heading}°</span>
+          )}
         </div>
       )}
 
-      {/* indicators */}
-      <div className="ul-card__indicators">
-        {battVal !== null && battVal !== undefined && (
-          <div className="ul-card__indicator">
-            <span className="ul-card__indicator-label">{battLabel}</span>
-            <div className="ul-card__indicator-bar">
-              <div
-                className="ul-card__indicator-fill"
-                style={{
-                  width: `${battVal}%`,
-                  background: battVal < 30 ? '#E0A63C' : '#37C2B8',
-                }}
-              />
-            </div>
-            <span
-              className="ul-card__indicator-val"
-              style={{ color: battVal < 30 ? '#E0A63C' : undefined }}
-            >
-              {battVal}%
-            </span>
-          </div>
-        )}
-        {unit.type === 'vehicle' && unit.battery !== null && (
-          <div className="ul-card__indicator">
-            <span className="ul-card__indicator-label">BATTERY</span>
-            <div className="ul-card__indicator-bar">
-              <div
-                className="ul-card__indicator-fill"
-                style={{ width: `${unit.battery ?? 0}%`, background: '#37C2B8' }}
-              />
-            </div>
-            <span className="ul-card__indicator-val">{unit.battery}%</span>
-          </div>
-        )}
-      </div>
-
-      {/* footer */}
       <div className="ul-card__footer">
-        <span className="ul-card__updated">Updated {unit.lastUpdated} ago</span>
+        <span className="ul-card__updated" style={unit.isLive ? { color: '#37C2B8' } : undefined}>
+          {unit.isLive ? '● LIVE' : 'No signal'}
+        </span>
         <span className="ul-card__cta">VIEW DETAIL →</span>
       </div>
     </article>
@@ -206,29 +169,11 @@ function PersonIcon() {
   )
 }
 
-function AgentIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
-      <circle cx="5.5" cy="3" r="2" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M1 10c0-2 2-3.5 4.5-3.5S10 8 10 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
 function LocationIcon() {
   return (
     <svg width="9" height="12" viewBox="0 0 9 12" fill="none" aria-hidden>
       <path d="M4.5 1C2.57 1 1 2.57 1 4.5c0 2.8 3.5 6.5 3.5 6.5S8 7.3 8 4.5C8 2.57 6.43 1 4.5 1Z" stroke="currentColor" strokeWidth="1.2"/>
       <circle cx="4.5" cy="4.5" r="1.2" fill="currentColor"/>
-    </svg>
-  )
-}
-
-function ClockIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-      <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M5 2.5V5l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
     </svg>
   )
 }

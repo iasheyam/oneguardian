@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react'
-import { apiUrl } from '../utils/api'
+import { apiUrl, getToken } from '../utils/api'
 
 export function useLivePositions() {
   const [positions, setPositions] = useState({}) // traccarDeviceId → position
 
   useEffect(() => {
-    const es = new EventSource(apiUrl('/api/live'))
+    const token = getToken()
+    const url   = token
+      ? apiUrl(`/api/live?token=${encodeURIComponent(token)}`)
+      : apiUrl('/api/live')
+
+    const es = new EventSource(url)
 
     es.onmessage = e => {
       try {

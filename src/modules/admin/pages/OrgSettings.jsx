@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import './OrgSettings.css'
-import { mockMembers, mockVehicles, mockGeofences, mockRoles } from '../data/mockSettings'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useAuth } from '../../auth/AuthContext'
 import { humanizeTime } from '../../../shared/utils/time'
-import { apiUrl } from '../../../shared/utils/api'
+import { apiUrl, apiFetch } from '../../../shared/utils/api'
 
 const STATUS_META = {
   normal:  { color: '#37C2B8', label: 'SECURE'  },
@@ -20,11 +19,8 @@ const MEMBER_STATUS_META = {
 }
 
 const ROLE_CHIP_META = {
-  Owner:     { color: '#37C2B8' },
-  Admin:     { color: '#37C2B8' },
-  Operator:  { color: '#66727A' },
-  Agent:     { color: '#66727A' },
-  'Read-only': { color: '#66727A' },
+  Admin:    { color: '#37C2B8' },
+  Operator: { color: '#66727A' },
 }
 
 const ACC_STATUS = {
@@ -51,7 +47,6 @@ const LOG_EVENT_META = {
   'member.role_changed':   { label: 'ROLE',       color: '#9B6BCC' },
 }
 
-const EDIT_ROLES = ['Admin', 'Operator', 'Agent', 'Read-only']
 
 const GEO_TYPE_META = {
   'SAFE ZONE': { color: '#37C2B8' },
@@ -61,43 +56,36 @@ const GEO_TYPE_META = {
 }
 
 const ALL_PERMISSIONS = [
-  { label: 'Billing',          desc: 'Manage subscription, invoices, and seats' },
-  { label: 'Members',          desc: 'Invite, edit, and remove org members' },
-  { label: 'Devices',          desc: 'Provision and configure tracking devices' },
-  { label: 'Geofences',        desc: 'Create, edit, and delete geofence zones' },
-  { label: 'Live ops',         desc: 'View and interact with the live operations map' },
-  { label: 'Live ops (view)',  desc: 'View-only access to the live map' },
-  { label: 'Acknowledge',      desc: 'Acknowledge and close active alert events' },
-  { label: 'Escalate',         desc: 'Escalate alerts to Tier-2 response' },
-  { label: 'Export footage',   desc: 'Download and export recorded video clips' },
-  { label: 'Own unit',         desc: 'View own unit telemetry and position only' },
-  { label: 'Trigger duress',   desc: 'Activate the duress / panic alert' },
-  { label: 'Reports',          desc: 'Access operational and audit reports' },
+  { key: 'ops',      label: 'Ops',      desc: 'Access to the live operations map' },
+  { key: 'units',    label: 'Units',    desc: 'View and manage tracked units' },
+  { key: 'feed',     label: 'Feed',     desc: 'Access to the event and alert feed' },
+  { key: 'accounts', label: 'Accounts', desc: 'Manage client accounts and resources' },
+  { key: 'logs',     label: 'Logs',     desc: 'View audit and activity logs' },
+  { key: 'admin',    label: 'Admin',    desc: 'Access to settings and organization management' },
 ]
 
 const SECTIONS = [
-  { key: 'members',   label: 'Members',      countKey: 'members'   },
-  { key: 'devices',   label: 'Devices',      countKey: 'devices'   },
-  { key: 'vehicles',  label: 'Vehicles',     countKey: 'vehicles'  },
-  { key: 'geofences', label: 'Geofences',    countKey: 'geofences' },
-  { key: 'roles',     label: 'Roles & access', countKey: null      },
+  { key: 'members',    label: 'Members',        countKey: 'members'    },
+  { key: 'devices',    label: 'Devices',        countKey: 'devices'    },
+  { key: 'principals', label: 'Principals',     countKey: 'principals' },
+  { key: 'vehicles',   label: 'Vehicles',       countKey: 'vehicles'   },
+  { key: 'roles',      label: 'Roles & access', countKey: null         },
 ]
 
 function sectionFromPath(pathname) {
-  if (pathname.includes('/settings/devices'))   return 'devices'
-  if (pathname.includes('/settings/vehicles'))  return 'vehicles'
-  if (pathname.includes('/settings/geofences')) return 'geofences'
-  if (pathname.includes('/settings/roles'))     return 'roles'
+  if (pathname.includes('/settings/devices'))    return 'devices'
+  if (pathname.includes('/settings/principals')) return 'principals'
+  if (pathname.includes('/settings/vehicles'))   return 'vehicles'
+  if (pathname.includes('/settings/roles'))      return 'roles'
   return 'members'
 }
 
 export default function OrgSettings() {
-  const [dbUsers,       setDbUsers]       = useState([])
-  const [dbInvitations, setDbInvitations] = useState([])
+  const [dbUsers,        setDbUsers]        = useState([])
+  const [dbInvitations,  setDbInvitations]  = useState([])
   const [membersLoading, setMembersLoading] = useState(true)
-  const [roles,     setRoles]     = useState(mockRoles)
-  const [vehicles,  setVehicles]  = useState(mockVehicles)
-  const [geofences, setGeofences] = useState(mockGeofences)
+  const [dbRoles,        setDbRoles]        = useState([])
+  const [rolesLoading,   setRolesLoading]   = useState(true)
   const { accounts } = useAccounts()
   const location = useLocation()
   const navigate = useNavigate()
@@ -113,15 +101,31 @@ export default function OrgSettings() {
     )
   )
 
+  const allPrincipals = accounts.flatMap(acc =>
+    acc.units.filter(u => u.type === 'person').map(u => ({ ...u, accountName: acc.name }))
+  )
+
+  const allVehicles = accounts.flatMap(acc =>
+    acc.units.filter(u => u.type === 'vehicle').map(u => ({ ...u, accountName: acc.name }))
+  )
+
   useEffect(() => {
     Promise.all([
-      fetch(apiUrl('/api/users')).then(r => r.json()),
-      fetch(apiUrl('/api/invitations')).then(r => r.json()),
+      apiFetch(apiUrl('/api/users')).then(r => r.json()),
+      apiFetch(apiUrl('/api/invitations')).then(r => r.json()),
     ]).then(([u, i]) => {
       setDbUsers(Array.isArray(u) ? u : [])
       setDbInvitations(Array.isArray(i) ? i : [])
     }).catch(console.error)
       .finally(() => setMembersLoading(false))
+  }, [])
+
+  useEffect(() => {
+    apiFetch(apiUrl('/api/roles'))
+      .then(r => r.json())
+      .then(data => setDbRoles(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setRolesLoading(false))
   }, [])
 
   function handleUpdateMember(updated) {
@@ -130,27 +134,42 @@ export default function OrgSettings() {
   }
 
   const counts = {
-    members:   dbUsers.length,
-    devices:   allDevices.length,
-    vehicles:  vehicles.length,
-    geofences: geofences.length,
+    members:    dbUsers.length,
+    devices:    allDevices.length,
+    principals: allPrincipals.length,
+    vehicles:   allVehicles.length,
   }
 
-  function handleSaveRole(updated) {
-    setRoles(prev => prev.map(r => r.id === updated.id ? updated : r))
+  async function handleSaveRole(id, payload) {
+    const res = await apiFetch(apiUrl(`/api/roles/${id}`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) return
+    const updated = await res.json()
+    setDbRoles(prev => prev.map(r => r.id === id ? updated : r))
     navigate('/admin/settings/roles')
   }
-  function handleCreateRole(newRole) {
-    setRoles(prev => [...prev, newRole])
+
+  async function handleCreateRole(payload) {
+    const res = await apiFetch(apiUrl('/api/roles'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) return
+    const created = await res.json()
+    setDbRoles(prev => [...prev, created])
     navigate('/admin/settings/roles')
   }
-  function handleCreateVehicle(newVehicle) {
-    setVehicles(prev => [...prev, newVehicle])
-    navigate('/admin/settings/vehicles')
-  }
-  function handleCreateGeofence(newGeofence) {
-    setGeofences(prev => [...prev, newGeofence])
-    navigate('/admin/settings/geofences')
+
+  async function handleDeleteRole(id) {
+    const res = await apiFetch(apiUrl(`/api/roles/${id}`), { method: 'DELETE' })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Delete failed')
+      return
+    }
+    setDbRoles(prev => prev.filter(r => r.id !== id))
   }
 
   return (
@@ -176,17 +195,15 @@ export default function OrgSettings() {
       <div className="os-content">
         <Routes>
           <Route index element={<Navigate to="members" replace />} />
-          <Route path="members"             element={<MembersSection dbUsers={dbUsers} dbInvitations={dbInvitations} loading={membersLoading} onEdit={id => navigate(`/admin/settings/members/${id}`)} />} />
-          <Route path="members/new"         element={<MemberInviteView onSave={() => navigate('/admin/settings/members')} />} />
-          <Route path="members/:memberId"   element={<MemberEditView members={dbUsers} loading={membersLoading} onSave={handleUpdateMember} />} />
-          <Route path="devices"          element={<DevicesSection devices={allDevices} />} />
-          <Route path="vehicles"         element={<VehiclesSection vehicles={vehicles} />} />
-          <Route path="vehicles/new"     element={<VehicleCreateView onSave={handleCreateVehicle} />} />
-          <Route path="geofences"        element={<GeofencesSection geofences={geofences} />} />
-          <Route path="geofences/new"    element={<GeofenceCreateView onSave={handleCreateGeofence} />} />
-          <Route path="roles"            element={<RolesSection roles={roles} />} />
-          <Route path="roles/new"        element={<RoleCreateView onSave={handleCreateRole} />} />
-          <Route path="roles/:roleId"    element={<RoleEditView roles={roles} onSave={handleSaveRole} />} />
+          <Route path="members"           element={<MembersSection dbUsers={dbUsers} dbInvitations={dbInvitations} loading={membersLoading} onEdit={id => navigate(`/admin/settings/members/${id}`)} />} />
+          <Route path="members/new"       element={<MemberInviteView roles={dbRoles} onSave={() => navigate('/admin/settings/members')} />} />
+          <Route path="members/:memberId" element={<MemberEditView members={dbUsers} loading={membersLoading} roles={dbRoles} onSave={handleUpdateMember} />} />
+          <Route path="devices"           element={<DevicesSection devices={allDevices} />} />
+          <Route path="principals"        element={<PrincipalsSection principals={allPrincipals} />} />
+          <Route path="vehicles"          element={<VehiclesSection vehicles={allVehicles} />} />
+          <Route path="roles"             element={<RolesSection roles={dbRoles} loading={rolesLoading} onDelete={handleDeleteRole} />} />
+          <Route path="roles/new"         element={<RoleCreateView onCreate={handleCreateRole} />} />
+          <Route path="roles/:roleId"     element={<RoleEditView roles={dbRoles} onSave={handleSaveRole} dbUsers={dbUsers} onUpdateUser={u => setDbUsers(prev => prev.map(m => m.id === u.id ? u : m))} />} />
         </Routes>
       </div>
     </div>
@@ -197,11 +214,12 @@ export default function OrgSettings() {
 function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
   const [resendingId, setResendingId] = useState(null)
   const [resendDone,  setResendDone]  = useState({})
+  const [search,      setSearch]      = useState('')
 
   async function handleResend(inv) {
     setResendingId(inv.id)
     try {
-      await fetch(apiUrl(`/api/invitations/${inv.id}/resend`), { method: 'POST' })
+      await apiFetch(apiUrl(`/api/invitations/${inv.id}/resend`), { method: 'POST' })
       setResendDone(p => ({ ...p, [inv.id]: true }))
       setTimeout(() => setResendDone(p => ({ ...p, [inv.id]: false })), 3000)
     } catch {
@@ -212,6 +230,14 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
   }
   const navigate = useNavigate()
   const [tab, setTab] = useState('users')
+
+  const q = search.trim().toLowerCase()
+  const filteredUsers = q
+    ? dbUsers.filter(u => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.toLowerCase().includes(q))
+    : dbUsers
+  const filteredInvites = q
+    ? dbInvitations.filter(i => i.name?.toLowerCase().includes(q) || i.email?.toLowerCase().includes(q))
+    : dbInvitations
 
   if (loading) return <div className="os-section"><span className="os-section__meta">Loading…</span></div>
 
@@ -225,6 +251,11 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
           </span>
         </div>
         <button className="os-action-btn" onClick={() => navigate('/admin/settings/members/new')}>+ Invite member</button>
+      </div>
+
+      <div className="os-search-wrap">
+        <SearchIcon />
+        <input className="os-search" placeholder="Search by name, email or role…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       {/* ── tabs ── */}
@@ -263,11 +294,11 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
               </tr>
             </thead>
             <tbody>
-              {dbUsers.length === 0
-                ? <tr><td colSpan={5} className="os-td-empty">No active users yet.</td></tr>
-                : dbUsers.map(u => {
-                    const statusMeta = MEMBER_STATUS_META[u.status] ?? MEMBER_STATUS_META.offline
-                    const roleMeta   = ROLE_CHIP_META[u.role] ?? { color: '#66727A' }
+              {filteredUsers.length === 0
+                ? <tr><td colSpan={7} className="os-td-empty">{q ? 'No matches.' : 'No active users yet.'}</td></tr>
+                : filteredUsers.map(u => {
+                    const statusMeta  = MEMBER_STATUS_META[u.status] ?? MEMBER_STATUS_META.offline
+                    const roleColor   = u.roleColor ?? ROLE_CHIP_META[u.role]?.color ?? '#66727A'
                     return (
                       <tr key={u.id}>
                         <td>
@@ -280,7 +311,7 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                           </div>
                         </td>
                         <td><Chip label={u.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={u.type === 'external' ? '#7B8FBD' : '#37C2B8'} /></td>
-                        <td><Chip label={u.role} color={roleMeta.color} /></td>
+                        <td><Chip label={u.role ?? '—'} color={roleColor} /></td>
                         <td><Chip label={u.twoFactor ? 'ON' : 'OFF'} color={u.twoFactor ? '#37C2B8' : '#E0A63C'} /></td>
                         <td><Chip label={statusMeta.label} color={statusMeta.color} dot /></td>
                         <td className="os-td-mono os-td-last-login">{humanizeTime(u.lastActiveAt)}</td>
@@ -308,9 +339,9 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
               </tr>
             </thead>
             <tbody>
-              {dbInvitations.length === 0
-                ? <tr><td colSpan={4} className="os-td-empty">No pending invitations.</td></tr>
-                : dbInvitations.map(inv => (
+              {filteredInvites.length === 0
+                ? <tr><td colSpan={5} className="os-td-empty">{q ? 'No matches.' : 'No pending invitations.'}</td></tr>
+                : filteredInvites.map(inv => (
                     <tr key={inv.id}>
                       <td>
                         <div className="os-member-cell">
@@ -321,7 +352,7 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                           </div>
                         </div>
                       </td>
-                      <td><Chip label={inv.role} color={ROLE_CHIP_META[inv.role]?.color ?? '#66727A'} /></td>
+                      <td><Chip label={inv.role ?? '—'} color={inv.roleColor ?? ROLE_CHIP_META[inv.role]?.color ?? '#66727A'} /></td>
                       <td className="os-td-mono">{new Date(inv.invitedAt).toLocaleDateString()}</td>
                       <td><Chip label="PENDING" color="#E0A63C" dot /></td>
                       <td>
@@ -359,10 +390,11 @@ const DEVICE_TYPE_OPTIONS = Object.entries(DEVICE_TYPE_LABELS).map(([k, v]) => (
 function DevicesSection({ devices }) {
   const { loading, accounts, updateDevice, deleteDevice } = useAccounts()
   const onlineCount  = devices.filter(d => d.status === 'online').length
-  const [editing,    setEditing]    = useState(null)   // full device object with accountId+unitId
+  const [editing,    setEditing]    = useState(null)
   const [confirmId,  setConfirmId]  = useState(null)
   const [form,       setForm]       = useState({})
   const [saving,     setSaving]     = useState(false)
+  const [search,     setSearch]     = useState('')
 
   function startEdit(d) {
     setEditing(d)
@@ -463,7 +495,17 @@ function DevicesSection({ devices }) {
         <div className="os-empty">Loading…</div>
       ) : devices.length === 0 ? (
         <div className="os-empty">No devices yet — add them from a unit's edit panel in Accounts.</div>
-      ) : (
+      ) : (() => {
+        const q = search.trim().toLowerCase()
+        const filtered = q
+          ? devices.filter(d => d.name?.toLowerCase().includes(q) || d.assignedTo?.toLowerCase().includes(q) || d.accountName?.toLowerCase().includes(q) || d.imei?.toLowerCase().includes(q) || d.serial?.toLowerCase().includes(q))
+          : devices
+        return (
+        <>
+        <div className="os-search-wrap">
+          <SearchIcon />
+          <input className="os-search" placeholder="Search by name, unit, account or IMEI…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
         <div className="os-table-wrap">
           <table className="os-table">
             <thead>
@@ -480,7 +522,9 @@ function DevicesSection({ devices }) {
               </tr>
             </thead>
             <tbody>
-              {devices.map(d => (
+              {filtered.length === 0
+                ? <tr><td colSpan={9} className="os-td-empty">No matches.</td></tr>
+                : filtered.map(d => (
                 <>
                   <tr key={d.id}>
                     <td>{d.name}</td>
@@ -527,6 +571,78 @@ function DevicesSection({ devices }) {
             </tbody>
           </table>
         </div>
+        </>
+        )
+      })()}
+    </div>
+  )
+}
+
+/* ── principals ───────────────────────────────────────────────── */
+function PrincipalsSection({ principals }) {
+  const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? principals.filter(p => p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.role?.toLowerCase().includes(q) || p.accountName?.toLowerCase().includes(q))
+    : principals
+
+  return (
+    <div className="os-section">
+      <div className="os-section__header">
+        <div>
+          <span className="os-section__title">Principals</span>
+          <span className="os-section__meta">{principals.length} principal{principals.length !== 1 ? 's' : ''} across all accounts</span>
+        </div>
+      </div>
+      <div className="os-search-wrap">
+        <SearchIcon />
+        <input className="os-search" placeholder="Search by name, email, role or account…" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+      {principals.length === 0 ? (
+        <div className="os-empty">No principals yet — add them from the Accounts page.</div>
+      ) : (
+        <div className="os-table-wrap">
+          <table className="os-table">
+            <thead>
+              <tr>
+                <th>NAME</th>
+                <th>ACCOUNT</th>
+                <th>ROLE</th>
+                <th>EMAIL</th>
+                <th>PHONE</th>
+                <th>STATUS</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0
+                ? <tr><td colSpan={7} className="os-td-empty">No matches.</td></tr>
+                : filtered.map(p => {
+                    const sc = STATUS_META[p.status] ?? STATUS_META.offline
+                    return (
+                      <tr key={p.id}>
+                        <td>
+                          <div className="os-member-cell">
+                            <Avatar name={p.name} role={p.role} />
+                            <span className="os-member-name">{p.name}</span>
+                          </div>
+                        </td>
+                        <td className="os-td-sub-only">{p.accountName}</td>
+                        <td>{p.role || '—'}</td>
+                        <td className="os-td-mono os-td-email">{p.email || '—'}</td>
+                        <td className="os-td-mono">{p.phone || '—'}</td>
+                        <td><Chip label={sc.label} color={sc.color} dot /></td>
+                        <td>
+                          <button className="os-row-manage-btn" onClick={() => navigate(`/admin/unit/principal/${p.id}`)}>View</button>
+                        </td>
+                      </tr>
+                    )
+                  })
+              }
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -535,135 +651,91 @@ function DevicesSection({ devices }) {
 /* ── vehicles ─────────────────────────────────────────────────── */
 function VehiclesSection({ vehicles }) {
   const navigate = useNavigate()
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? vehicles.filter(v => v.name?.toLowerCase().includes(q) || v.accountName?.toLowerCase().includes(q) || v.make?.toLowerCase().includes(q) || v.model?.toLowerCase().includes(q) || v.plate?.toLowerCase().includes(q))
+    : vehicles
+
   return (
     <div className="os-section">
       <div className="os-section__header">
         <div>
           <span className="os-section__title">Vehicles</span>
-          <span className="os-section__meta">
-            {vehicles.length} vehicles in the protective fleet
-          </span>
+          <span className="os-section__meta">{vehicles.length} vehicle{vehicles.length !== 1 ? 's' : ''} across all accounts</span>
         </div>
-        <button className="os-action-btn" onClick={() => navigate('/admin/settings/vehicles/new')}>
-          + Add vehicle
-        </button>
       </div>
-
-      <div className="os-table-wrap">
-        <table className="os-table">
-          <thead>
-            <tr>
-              <th>UNIT</th>
-              <th>VEHICLE</th>
-              <th>PLATE</th>
-              <th>ARMOR</th>
-              <th>VIN</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vehicles.map(v => {
-              const meta = STATUS_META[v.status] ?? STATUS_META.offline
-              const armorColor = v.armor === 'B6 Armored' ? '#37C2B8'
-                : v.armor === 'B4 Armored' ? '#5AA9C2'
-                : '#66727A'
-              return (
-                <tr key={v.id}>
-                  <td>
-                    <div className="os-unit-cell">
-                      <span
-                        className="os-unit-dot"
-                        style={{ background: meta.color }}
-                      />
-                      <span className="os-td-mono os-td-id">{v.id}</span>
-                      <span className="os-unit-callsign">{v.callsign}</span>
-                    </div>
-                  </td>
-                  <td>{v.vehicle}</td>
-                  <td className="os-td-mono">{v.plate}</td>
-                  <td>
-                    <span style={{ color: armorColor, fontSize: 12 }}>{v.armor}</span>
-                  </td>
-                  <td className="os-td-mono os-td-vin">{v.vin}</td>
-                  <td>
-                    <Chip label={meta.label} color={meta.color} />
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <div className="os-search-wrap">
+        <SearchIcon />
+        <input className="os-search" placeholder="Search by callsign, account, make, model or plate…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
-    </div>
-  )
-}
-
-/* ── geofences ────────────────────────────────────────────────── */
-function GeofencesSection({ geofences }) {
-  const navigate    = useNavigate()
-  const activeCount = geofences.filter(g => g.active).length
-  return (
-    <div className="os-section">
-      <div className="os-section__header">
-        <div>
-          <span className="os-section__title">Geofences</span>
-          <span className="os-section__meta">
-            {geofences.length} zones · safe zones, corridors and exclusion areas · {activeCount} active
-          </span>
+      {vehicles.length === 0 ? (
+        <div className="os-empty">No vehicles yet — add them from the Accounts page.</div>
+      ) : (
+        <div className="os-table-wrap">
+          <table className="os-table">
+            <thead>
+              <tr>
+                <th>CALLSIGN</th>
+                <th>ACCOUNT</th>
+                <th>MAKE / MODEL</th>
+                <th>PLATE</th>
+                <th>ARMOR</th>
+                <th>STATUS</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0
+                ? <tr><td colSpan={7} className="os-td-empty">No matches.</td></tr>
+                : filtered.map(v => {
+                    const sc = STATUS_META[v.status] ?? STATUS_META.offline
+                    const armorColor = v.armorLevel?.startsWith('B6') ? '#37C2B8' : v.armorLevel?.startsWith('B4') ? '#5AA9C2' : '#66727A'
+                    return (
+                      <tr key={v.id}>
+                        <td className="os-member-name">{v.name}</td>
+                        <td className="os-td-sub-only">{v.accountName}</td>
+                        <td>{[v.make, v.model].filter(Boolean).join(' ') || '—'}</td>
+                        <td className="os-td-mono">{v.plate || '—'}</td>
+                        <td><span style={{ color: armorColor, fontSize: 12 }}>{v.armorLevel || '—'}</span></td>
+                        <td><Chip label={sc.label} color={sc.color} dot /></td>
+                        <td>
+                          <button className="os-row-manage-btn" onClick={() => navigate(`/admin/unit/vehicle/${v.id}`)}>View</button>
+                        </td>
+                      </tr>
+                    )
+                  })
+              }
+            </tbody>
+          </table>
         </div>
-        <button className="os-action-btn" onClick={() => navigate('/admin/settings/geofences/new')}>
-          + New geofence
-        </button>
-      </div>
-
-      <div className="os-table-wrap">
-        <table className="os-table">
-          <thead>
-            <tr>
-              <th>NAME</th>
-              <th>TYPE</th>
-              <th>SIZE</th>
-              <th>LINKED UNITS</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {geofences.map(g => {
-              const typeMeta = GEO_TYPE_META[g.type] ?? { color: '#66727A' }
-              return (
-                <tr key={g.id}>
-                  <td className="os-geo-name">{g.name}</td>
-                  <td>
-                    <Chip label={g.type} color={typeMeta.color} />
-                  </td>
-                  <td className="os-td-mono" style={{ fontSize: 11 }}>{g.size}</td>
-                  <td className="os-td-mono" style={{ fontSize: 11 }}>{g.linkedUnits}</td>
-                  <td>
-                    <Chip
-                      label={g.active ? 'ACTIVE' : 'PAUSED'}
-                      color={g.active ? '#37C2B8' : '#66727A'}
-                    />
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   )
 }
 
 /* ── roles & access ───────────────────────────────────────────── */
-function RolesSection({ roles }) {
+function RolesSection({ roles, loading, onDelete }) {
   const navigate = useNavigate()
+  const [confirmId, setConfirmId] = useState(null)
+  const [deleting,  setDeleting]  = useState(null)
+
+  async function handleDelete(id) {
+    setDeleting(id)
+    await onDelete(id)
+    setDeleting(null)
+    setConfirmId(null)
+  }
+
+  if (loading) return <div className="os-section"><span className="os-section__meta">Loading…</span></div>
+
   return (
     <div className="os-section">
       <div className="os-section__header">
         <div>
           <span className="os-section__title">Roles & access</span>
           <span className="os-section__meta">
-            {roles.length} roles · least-privilege by default
+            {roles.length} role{roles.length !== 1 ? 's' : ''} · menu-level permissions
           </span>
         </div>
         <button className="os-action-btn" onClick={() => navigate('/admin/settings/roles/new')}>
@@ -676,6 +748,11 @@ function RolesSection({ roles }) {
             key={role.id}
             role={role}
             onEdit={() => navigate(`/admin/settings/roles/${role.id}`)}
+            onDelete={() => setConfirmId(role.id)}
+            confirmDelete={confirmId === role.id}
+            onCancelDelete={() => setConfirmId(null)}
+            onConfirmDelete={() => handleDelete(role.id)}
+            deleting={deleting === role.id}
           />
         ))}
       </div>
@@ -683,69 +760,72 @@ function RolesSection({ roles }) {
   )
 }
 
-function RoleCard({ role, onEdit }) {
+function RoleCard({ role, onEdit, onDelete, confirmDelete, onCancelDelete, onConfirmDelete, deleting }) {
+  const permLabels = role.permissions.map(key => {
+    const found = ALL_PERMISSIONS.find(p => p.key === key)
+    return found ? found.label : key
+  })
   return (
     <div className="os-role-card">
       <div className="os-role-card__header">
         <span className="os-role-card__dot" style={{ background: role.color }} />
         <span className="os-role-card__name" style={{ color: role.color }}>{role.name}</span>
-        <span className="os-role-card__count">
-          {role.memberCount} {role.memberCount === 1 ? 'member' : 'members'}
-        </span>
-        <button className="os-role-card__edit-btn" onClick={onEdit}>Edit →</button>
+        {role.isSystem && <span className="os-role-system-badge">SYSTEM</span>}
+        <div className="os-role-card__actions">
+          <button className="os-role-card__edit-btn" onClick={onEdit}>Edit →</button>
+          {!role.isSystem && (
+            <button className="os-icon-btn os-icon-btn--danger" onClick={onDelete} title="Delete role">
+              <TrashIcon />
+            </button>
+          )}
+        </div>
       </div>
-      <p className="os-role-card__desc">{role.description}</p>
+      {role.description && <p className="os-role-card__desc">{role.description}</p>}
       <div className="os-role-card__perms">
-        {role.permissions.map(p => <span key={p} className="os-perm-pill">{p}</span>)}
+        {permLabels.map(l => <span key={l} className="os-perm-pill">{l}</span>)}
+        {permLabels.length === 0 && <span className="os-perm-pill os-perm-pill--empty">No permissions</span>}
       </div>
+      {confirmDelete && (
+        <div className="os-confirm-bar" style={{ marginTop: 10 }}>
+          <span>Delete "{role.name}"? Members will lose this role.</span>
+          <div className="os-confirm-bar__actions">
+            <button className="os-icon-btn" onClick={onCancelDelete}>Cancel</button>
+            <button className="os-icon-btn os-icon-btn--danger" onClick={onConfirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function RoleCreateView({ onSave }) {
+function RoleCreateView({ onCreate }) {
   const navigate = useNavigate()
-
-  const [name, setName]         = useState('')
-  const [desc, setDesc]         = useState('')
+  const [name,        setName]  = useState('')
+  const [desc,        setDesc]  = useState('')
   const [permissions, setPerms] = useState(new Set())
-  const [members, setMembers]   = useState([])
-  const [showPicker, setPicker] = useState(false)
+  const [saving,      setSaving] = useState(false)
 
-  const available = mockMembers.filter(m => !members.some(cm => cm.id === m.id))
   const canCreate = name.trim().length > 0
 
-  function togglePerm(label) {
+  function togglePerm(key) {
     setPerms(prev => {
       const next = new Set(prev)
-      next.has(label) ? next.delete(label) : next.add(label)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
 
-  function addMember(member) {
-    setMembers(prev => [...prev, member])
-    setPicker(false)
-  }
-
-  function removeMember(id) {
-    setMembers(prev => prev.filter(m => m.id !== id))
-  }
-
-  function handleCreate() {
-    if (!canCreate) return
-    onSave({
-      id:          `role-${Date.now()}`,
-      name:        name.trim(),
-      description: desc.trim() || 'Custom role.',
-      color:       '#66727A',
-      permissions: Array.from(permissions),
-      memberCount: members.length,
-    })
+  async function handleCreate() {
+    if (!canCreate || saving) return
+    setSaving(true)
+    await onCreate({ name: name.trim(), description: desc.trim() || null, permissions: Array.from(permissions) })
+    setSaving(false)
   }
 
   return (
     <div className="os-section">
-      {/* ── header ── */}
       <div className="re-header">
         <button className="re-back" onClick={() => navigate('/admin/settings/roles')}>← ROLES</button>
         <div className="re-header__title">
@@ -753,54 +833,33 @@ function RoleCreateView({ onSave }) {
             {name || 'New role'}
           </span>
         </div>
-        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>
-          Create role
+        <button className="re-save" onClick={handleCreate} disabled={!canCreate || saving}>
+          {saving ? 'Creating…' : 'Create role'}
         </button>
       </div>
 
-      {/* ── role details first — name required ── */}
       <div className="re-block">
         <span className="re-block__label">ROLE DETAILS</span>
         <div className="re-fields">
           <div className="re-field-group">
-            <label className="re-field-label">
-              Name <span className="re-required">*</span>
-            </label>
-            <input
-              className="re-field-input"
-              placeholder="e.g. Supervisor"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              autoFocus
-            />
+            <label className="re-field-label">Name <span className="re-required">*</span></label>
+            <input className="re-field-input" placeholder="e.g. Supervisor" value={name} onChange={e => setName(e.target.value)} autoFocus />
           </div>
           <div className="re-field-group">
             <label className="re-field-label">Description</label>
-            <input
-              className="re-field-input"
-              placeholder="What this role can do…"
-              value={desc}
-              onChange={e => setDesc(e.target.value)}
-            />
+            <input className="re-field-input" placeholder="What this role can do…" value={desc} onChange={e => setDesc(e.target.value)} />
           </div>
         </div>
       </div>
 
-      {/* ── feature access ── */}
       <div className="re-block">
-        <span className="re-block__label">FEATURE ACCESS</span>
+        <span className="re-block__label">MENU ACCESS</span>
         <div className="re-perm-grid">
           {ALL_PERMISSIONS.map(p => {
-            const active = permissions.has(p.label)
+            const active = permissions.has(p.key)
             return (
-              <button
-                key={p.label}
-                className={`re-perm-toggle${active ? ' active' : ''}`}
-                onClick={() => togglePerm(p.label)}
-              >
-                <span className="re-perm-toggle__check">
-                  {active && <CheckIcon />}
-                </span>
+              <button key={p.key} className={`re-perm-toggle${active ? ' active' : ''}`} onClick={() => togglePerm(p.key)}>
+                <span className="re-perm-toggle__check">{active && <CheckIcon />}</span>
                 <div>
                   <span className="re-perm-toggle__name">{p.label}</span>
                   <span className="re-perm-toggle__desc">{p.desc}</span>
@@ -810,75 +869,27 @@ function RoleCreateView({ onSave }) {
           })}
         </div>
       </div>
-
-      {/* ── members ── */}
-      <div className="re-block">
-        <div className="re-block__header">
-          <span className="re-block__label">MEMBERS</span>
-          <div className="re-picker-wrap">
-            <button
-              className="os-action-btn"
-              onClick={() => setPicker(v => !v)}
-              disabled={available.length === 0}
-            >
-              + Add member
-            </button>
-            {showPicker && (
-              <>
-                <div className="re-picker-backdrop" onClick={() => setPicker(false)} />
-                <div className="re-picker">
-                  {available.map(m => (
-                    <button key={m.id} className="re-picker__item" onClick={() => addMember(m)}>
-                      <Avatar name={m.name} role={m.role} />
-                      <div>
-                        <span className="re-picker__name">{m.name}</span>
-                        <span className="re-picker__role">Currently: {m.role}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {members.length === 0 ? (
-          <span className="re-members-empty">No members assigned yet.</span>
-        ) : (
-          <div className="re-members">
-            {members.map(m => {
-              const sm = MEMBER_STATUS_META[m.status]
-              return (
-                <div key={m.id} className="re-member-row">
-                  <Avatar name={m.name} role={m.role} />
-                  <div className="re-member-info">
-                    <span className="re-member-name">{m.name}</span>
-                    <span className="re-member-email">{m.email}</span>
-                  </div>
-                  <Chip label={sm.label} color={sm.color} dot />
-                  <button className="re-remove-btn" onClick={() => removeMember(m.id)}>
-                    Remove
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
 
-function RoleEditView({ roles, onSave }) {
-  const { roleId }  = useParams()
-  const navigate    = useNavigate()
-  const role        = roles.find(r => r.id === roleId)
+function RoleEditView({ roles, onSave, dbUsers, onUpdateUser }) {
+  const { roleId } = useParams()
+  const navigate   = useNavigate()
+  const role       = roles.find(r => r.id === roleId)
 
-  const [name, setName]         = useState(role?.name ?? '')
-  const [desc, setDesc]         = useState(role?.description ?? '')
-  const [permissions, setPerms] = useState(new Set(role?.permissions ?? []))
-  const [members, setMembers]   = useState(() => mockMembers.filter(m => role ? m.role === role.name : false))
-  const [showPicker, setPicker] = useState(false)
+  const [tab,         setTab]    = useState('info')
+  const [name,        setName]   = useState(role?.name ?? '')
+  const [desc,        setDesc]   = useState(role?.description ?? '')
+  const [permissions, setPerms]  = useState(new Set(role?.permissions ?? []))
+  const [saving,      setSaving] = useState(false)
+  const [showPicker,  setPicker] = useState(false)
+  const [assigning,   setAssigning] = useState(null)
+  const [removing,    setRemoving]  = useState(null)
+
+  const roleMembers    = (dbUsers ?? []).filter(u => u.roleId === roleId)
+  const availableUsers = (dbUsers ?? []).filter(u => u.roleId !== roleId && u.type === 'internal')
+  const operatorRole   = roles.find(r => r.name === 'Operator')
 
   if (!role) {
     return (
@@ -893,33 +904,44 @@ function RoleEditView({ roles, onSave }) {
     )
   }
 
-  const available = mockMembers.filter(m => !members.some(cm => cm.id === m.id))
-
-  function togglePerm(label) {
+  function togglePerm(key) {
     setPerms(prev => {
       const next = new Set(prev)
-      next.has(label) ? next.delete(label) : next.add(label)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
 
-  function addMember(member) {
-    setMembers(prev => [...prev, member])
+  async function handleSave() {
+    if (saving) return
+    setSaving(true)
+    await onSave(role.id, {
+      ...(!role.isSystem && { name: name.trim() }),
+      description: desc.trim() || null,
+      permissions: Array.from(permissions),
+    })
+    setSaving(false)
+  }
+
+  async function handleAssign(userId) {
+    setAssigning(userId)
+    const res = await apiFetch(apiUrl(`/api/users/${userId}`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roleId }),
+    })
+    if (res.ok) onUpdateUser(await res.json())
+    setAssigning(null)
     setPicker(false)
   }
 
-  function removeMember(id) {
-    setMembers(prev => prev.filter(m => m.id !== id))
-  }
-
-  function handleSave() {
-    onSave({
-      ...role,
-      name,
-      description: desc,
-      permissions: Array.from(permissions),
-      memberCount: members.length,
+  async function handleRemove(userId) {
+    setRemoving(userId)
+    const res = await apiFetch(apiUrl(`/api/users/${userId}`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roleId: operatorRole?.id ?? null }),
     })
+    if (res.ok) onUpdateUser(await res.json())
+    setRemoving(null)
   }
 
   return (
@@ -930,118 +952,138 @@ function RoleEditView({ roles, onSave }) {
         <div className="re-header__title">
           <span className="re-header__dot" style={{ background: role.color }} />
           <span className="re-header__name" style={{ color: role.color }}>{name}</span>
+          {role.isSystem && <span className="os-role-system-badge">SYSTEM</span>}
         </div>
-        <button className="re-save" onClick={handleSave}>Save changes</button>
-      </div>
-
-      {/* ── role details ── */}
-      <div className="re-block">
-        <span className="re-block__label">ROLE DETAILS</span>
-        <div className="re-fields">
-          <div className="re-field-group">
-            <label className="re-field-label">Name</label>
-            <input
-              className="re-field-input"
-              value={name}
-              onChange={e => setName(e.target.value)}
-            />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Description</label>
-            <input
-              className="re-field-input"
-              value={desc}
-              onChange={e => setDesc(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── feature access ── */}
-      <div className="re-block">
-        <span className="re-block__label">FEATURE ACCESS</span>
-        <div className="re-perm-grid">
-          {ALL_PERMISSIONS.map(p => {
-            const active = permissions.has(p.label)
-            return (
-              <button
-                key={p.label}
-                className={`re-perm-toggle${active ? ' active' : ''}`}
-                onClick={() => togglePerm(p.label)}
-              >
-                <span className="re-perm-toggle__check">
-                  {active && <CheckIcon />}
-                </span>
-                <div>
-                  <span className="re-perm-toggle__name">{p.label}</span>
-                  <span className="re-perm-toggle__desc">{p.desc}</span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ── members ── */}
-      <div className="re-block">
-        <div className="re-block__header">
-          <span className="re-block__label">MEMBERS</span>
-          <div className="re-picker-wrap">
-            <button
-              className="os-action-btn"
-              onClick={() => setPicker(v => !v)}
-              disabled={available.length === 0}
-            >
-              + Add member
-            </button>
-            {showPicker && (
-              <>
-                <div className="re-picker-backdrop" onClick={() => setPicker(false)} />
-                <div className="re-picker">
-                  {available.map(m => (
-                    <button key={m.id} className="re-picker__item" onClick={() => addMember(m)}>
-                      <Avatar name={m.name} role={m.role} />
-                      <div>
-                        <span className="re-picker__name">{m.name}</span>
-                        <span className="re-picker__role">Currently: {m.role}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {members.length === 0 ? (
-          <span className="re-members-empty">No members assigned to this role.</span>
-        ) : (
-          <div className="re-members">
-            {members.map(m => {
-              const sm = MEMBER_STATUS_META[m.status]
-              return (
-                <div key={m.id} className="re-member-row">
-                  <Avatar name={m.name} role={m.role} />
-                  <div className="re-member-info">
-                    <span className="re-member-name">{m.name}</span>
-                    <span className="re-member-email">{m.email}</span>
-                  </div>
-                  <Chip label={sm.label} color={sm.color} dot />
-                  <button className="re-remove-btn" onClick={() => removeMember(m.id)}>
-                    Remove
-                  </button>
-                </div>
-              )
-            })}
-          </div>
+        {tab === 'info' && (
+          <button className="re-save" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
         )}
       </div>
+
+      {/* ── tabs ── */}
+      <div className="re-tabs">
+        <button className={`re-tab${tab === 'info' ? ' active' : ''}`} onClick={() => setTab('info')}>
+          Information
+        </button>
+        <button className={`re-tab${tab === 'members' ? ' active' : ''}`} onClick={() => setTab('members')}>
+          Members
+          <span className={`re-tab__count${tab === 'members' ? ' active' : ''}`}>{roleMembers.length}</span>
+        </button>
+      </div>
+
+      {/* ── information tab ── */}
+      {tab === 'info' && (
+        <>
+          <div className="re-block">
+            <span className="re-block__label">ROLE DETAILS</span>
+            <div className="re-fields">
+              <div className="re-field-group">
+                <label className="re-field-label">Name</label>
+                <input className="re-field-input" value={name} onChange={e => setName(e.target.value)} disabled={role.isSystem} />
+              </div>
+              <div className="re-field-group">
+                <label className="re-field-label">Description</label>
+                <input className="re-field-input" value={desc} onChange={e => setDesc(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="re-block">
+            <span className="re-block__label">MENU ACCESS</span>
+            <div className="re-perm-grid">
+              {ALL_PERMISSIONS.map(p => {
+                const active = permissions.has(p.key)
+                return (
+                  <button key={p.key} className={`re-perm-toggle${active ? ' active' : ''}`} onClick={() => togglePerm(p.key)}>
+                    <span className="re-perm-toggle__check">{active && <CheckIcon />}</span>
+                    <div>
+                      <span className="re-perm-toggle__name">{p.label}</span>
+                      <span className="re-perm-toggle__desc">{p.desc}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── members tab ── */}
+      {tab === 'members' && (
+        <div className="re-block">
+          <div className="re-block__header">
+            <span className="re-block__label">ASSIGNED MEMBERS</span>
+            <div className="re-picker-wrap">
+              <button
+                className="os-action-btn"
+                onClick={() => setPicker(v => !v)}
+                disabled={availableUsers.length === 0}
+              >
+                + Assign member
+              </button>
+              {showPicker && (
+                <>
+                  <div className="re-picker-backdrop" onClick={() => setPicker(false)} />
+                  <div className="re-picker">
+                    {availableUsers.map(m => {
+                      const currentRole = roles.find(r => r.id === m.roleId)
+                      return (
+                        <button
+                          key={m.id}
+                          className="re-picker__item"
+                          onClick={() => handleAssign(m.id)}
+                          disabled={assigning === m.id}
+                        >
+                          <Avatar name={m.name} role={m.role} />
+                          <div>
+                            <span className="re-picker__name">{m.name}</span>
+                            <span className="re-picker__role">Currently: {currentRole?.name ?? m.role}</span>
+                          </div>
+                          {assigning === m.id && <span className="re-picker__assigning">…</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {roleMembers.length === 0 ? (
+            <span className="re-members-empty">No members assigned to this role yet.</span>
+          ) : (
+            <div className="re-members">
+              {roleMembers.map(m => {
+                const statusMeta = MEMBER_STATUS_META[m.status] ?? MEMBER_STATUS_META.offline
+                return (
+                  <div key={m.id} className="re-member-row">
+                    <Avatar name={m.name} role={m.role} />
+                    <div className="re-member-info">
+                      <span className="re-member-name">{m.name}</span>
+                      <span className="re-member-email">{m.email}</span>
+                    </div>
+                    <Chip label={statusMeta.label} color={statusMeta.color} dot />
+                    <button
+                      className="re-remove-btn"
+                      onClick={() => handleRemove(m.id)}
+                      disabled={removing === m.id}
+                    >
+                      {removing === m.id ? '…' : 'Remove'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 /* ── member edit ──────────────────────────────────────────────── */
-function MemberEditView({ members, loading, onSave }) {
+function MemberEditView({ members, loading, roles, onSave }) {
   const { memberId } = useParams()
   const navigate     = useNavigate()
   const { accounts } = useAccounts()
@@ -1051,30 +1093,57 @@ function MemberEditView({ members, loading, onSave }) {
   const [name,        setName]        = useState(member?.name ?? '')
   const [email,       setEmail]       = useState(member?.email ?? '')
   const [phone,       setPhone]       = useState(member?.phone ?? '')
-  const [role,        setRole]        = useState(member?.role ?? 'Operator')
+  const [roleId,      setRoleId]      = useState(member?.roleId ?? null)
   const [jobTitle,    setJobTitle]    = useState(member?.jobTitle ?? '')
   const [department,  setDepartment]  = useState(member?.department ?? '')
   const [employeeId,  setEmployeeId]  = useState(member?.employeeId ?? '')
   const [twoFactor,   setTwoFactor]   = useState(member?.twoFactor ?? false)
-  const [assignments, setAssignments] = useState(
-    () => (member?.assignments ?? []).map(a =>
-      typeof a === 'string'
-        ? { accountId: a, scope: 'account', groupIds: [], unitIds: [] }
-        : a
-    )
-  )
-  const [showPicker,    setShowPicker]    = useState(false)
-  const [memberLogs,    setMemberLogs]    = useState([])
+  const [dbAssignments,      setDbAssignments]      = useState([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [panelMode,          setPanelMode]          = useState(null) // null | 'add' | accountId
+  const [memberLogs,         setMemberLogs]         = useState([])
   const [logsLoading,   setLogsLoading]   = useState(false)
 
   useEffect(() => {
     if (!memberId) return
     setLogsLoading(true)
-    fetch(apiUrl(`/api/users/${memberId}/logs`))
+    apiFetch(apiUrl(`/api/users/${memberId}/logs`))
       .then(r => r.json())
       .then(data => { setMemberLogs(Array.isArray(data) ? data : []); setLogsLoading(false) })
       .catch(() => setLogsLoading(false))
   }, [memberId])
+
+  useEffect(() => {
+    if (!memberId) return
+    setAssignmentsLoading(true)
+    apiFetch(apiUrl(`/api/users/${memberId}/assignments`))
+      .then(r => r.json())
+      .then(data => setDbAssignments(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setAssignmentsLoading(false))
+  }, [memberId])
+
+  async function handleAddAssignment(grants) {
+    const results = await Promise.all(
+      grants.map(async ({ accountId, scopeType, scopeId }) => {
+        const res = await apiFetch(apiUrl(`/api/users/${memberId}/assignments`), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId, scopeType, scopeId }),
+        })
+        if (!res.ok) return null
+        return res.json()
+      })
+    )
+    const added = results.filter(Boolean)
+    if (added.length > 0) setDbAssignments(p => [...p, ...added])
+  }
+
+  async function handleRemoveAssignments(ids) {
+    await Promise.all(ids.map(id =>
+      apiFetch(apiUrl(`/api/users/${memberId}/assignments/${id}`), { method: 'DELETE' })
+    ))
+    setDbAssignments(p => p.filter(a => !ids.includes(a.id)))
+  }
 
   if (loading) {
     return <div style={{ padding: 28, fontFamily: 'var(--adm-mono)', fontSize: 12, color: 'var(--adm-text-dim)' }}>Loading…</div>
@@ -1093,44 +1162,18 @@ function MemberEditView({ members, loading, onSave }) {
     )
   }
 
-  const availableAccounts = accounts.filter(a => !assignments.some(x => x.accountId === a.id))
-  const canSave           = name.trim().length > 0 && email.trim().includes('@')
-
-  function addAssignment(accountId) {
-    setAssignments(p => [...p, { accountId, scope: 'account', groupIds: [], unitIds: [] }])
-    setShowPicker(false)
-  }
-  function removeAssignment(accountId) {
-    setAssignments(p => p.filter(x => x.accountId !== accountId))
-  }
-  function setScopeForAccount(accountId, scope) {
-    setAssignments(p => p.map(x => x.accountId !== accountId ? x : { ...x, scope, groupIds: [], unitIds: [] }))
-  }
-  function toggleGroup(accountId, groupId) {
-    setAssignments(p => p.map(x => {
-      if (x.accountId !== accountId) return x
-      const has = x.groupIds.includes(groupId)
-      return { ...x, groupIds: has ? x.groupIds.filter(id => id !== groupId) : [...x.groupIds, groupId] }
-    }))
-  }
-  function toggleUnit(accountId, unitId) {
-    setAssignments(p => p.map(x => {
-      if (x.accountId !== accountId) return x
-      const has = x.unitIds.includes(unitId)
-      return { ...x, unitIds: has ? x.unitIds.filter(id => id !== unitId) : [...x.unitIds, unitId] }
-    }))
-  }
+  const canSave = name.trim().length > 0 && email.trim().includes('@')
 
   async function handleSave() {
     if (!canSave) return
-    const res = await fetch(apiUrl(`/api/users/${member.id}`), {
+    const res = await apiFetch(apiUrl(`/api/users/${member.id}`), {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         name:       name.trim(),
         email:      email.trim(),
         phone:      phone.trim(),
-        role,
+        roleId,
         twoFactor,
         actorSub:   user?.sub,
         ...(member.type === 'internal' && {
@@ -1145,20 +1188,22 @@ function MemberEditView({ members, loading, onSave }) {
     onSave(updated)
   }
 
-  const isOwner = member.role === 'Owner'
+  const selectedRole = roles.find(r => r.id === roleId)
+  const isAdmin      = selectedRole?.name === 'Admin'
 
   return (
+    <>
     <div className="me-page">
       {/* ── page header ── */}
       <div className="me-page-header">
         <button className="re-back" onClick={() => navigate('/admin/settings/members')}>← MEMBERS</button>
         <div className="me-page-header__identity">
-          <Avatar name={name || member.name} role={role} size="lg" />
+          <Avatar name={name || member.name} role={selectedRole?.name} size="lg" />
           <div className="me-page-header__info">
             <span className="me-page-header__name">{name || member.name}</span>
             <div className="me-page-header__chips">
               <Chip label={member.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={member.type === 'external' ? '#7B8FBD' : '#37C2B8'} />
-              <Chip label={role.toUpperCase()} color={ROLE_CHIP_META[role]?.color ?? '#66727A'} />
+              <Chip label={(selectedRole?.name ?? '—').toUpperCase()} color={selectedRole?.color ?? '#66727A'} />
             </div>
           </div>
         </div>
@@ -1214,9 +1259,13 @@ function MemberEditView({ members, loading, onSave }) {
                 </div>
                 <div className="re-field-group">
                   <label className="re-field-label">Role</label>
-                  {isOwner
-                    ? <span className="me-owner-note">Owner role cannot be changed.</span>
-                    : <PillGroup options={EDIT_ROLES} value={role} onChange={setRole} />
+                  {roles.length === 0
+                    ? <span className="me-owner-note">Loading roles…</span>
+                    : <PillGroup
+                        options={roles.map(r => r.name)}
+                        value={selectedRole?.name ?? ''}
+                        onChange={name => setRoleId(roles.find(r => r.name === name)?.id ?? null)}
+                      />
                   }
                 </div>
               </div>
@@ -1246,108 +1295,39 @@ function MemberEditView({ members, loading, onSave }) {
           <div className="me-card__head">
             <div>
               <span className="me-card__title">Access Management</span>
-              <span className="me-card__sub">Grant full account, specific groups, or individual units</span>
+              <span className="me-card__sub">Grant access at account, group, or unit level</span>
             </div>
-            <div className="re-picker-wrap">
-              <button className="os-action-btn" onClick={() => setShowPicker(v => !v)} disabled={availableAccounts.length === 0}>
-                + Assign account
-              </button>
-              {showPicker && (
-                <>
-                  <div className="re-picker-backdrop" onClick={() => setShowPicker(false)} />
-                  <div className="re-picker">
-                    {availableAccounts.map(a => {
-                      const sm = ACC_STATUS[a.status] ?? ACC_STATUS.inactive
-                      return (
-                        <button key={a.id} className="re-picker__item" onClick={() => addAssignment(a.id)}>
-                          <span className="me-acc-avatar" style={{ background: accAvatarColor(a.id) }}>{accInitials(a.name)}</span>
-                          <div>
-                            <span className="re-picker__name">{a.name}</span>
-                            <span className="re-picker__role">{a.type} · {a.units.length} units</span>
-                          </div>
-                          <span style={{ marginLeft: 'auto', fontSize: 10, color: sm.color }}>{sm.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
+            <button className="os-action-btn" onClick={() => setPanelMode('add')}>
+              + Add Assignment
+            </button>
           </div>
           <div className="me-card__body">
-            {assignments.length === 0 ? (
-              <span className="re-members-empty">No accounts assigned. Add at least one account to grant access.</span>
-            ) : (
-              <div className="me-assign-cards">
-                {assignments.map(assign => {
-                  const account = accounts.find(a => a.id === assign.accountId)
-                  if (!account) return null
-                  const sm       = ACC_STATUS[account.status] ?? ACC_STATUS.inactive
-                  const people   = account.units.filter(u => u.type === 'person').length
-                  const vehicles = account.units.filter(u => u.type === 'vehicle').length
-                  const scopeMeta = assign.scope === 'account'
-                    ? `Full access · ${people}p · ${vehicles}v · ${account.groups.length}g`
-                    : assign.scope === 'groups'
-                      ? `${assign.groupIds.length} of ${account.groups.length} ${account.groups.length === 1 ? 'group' : 'groups'}`
-                      : `${assign.unitIds.length} of ${account.units.length} ${account.units.length === 1 ? 'unit' : 'units'}`
-                  return (
-                    <div key={assign.accountId} className="me-assign-card">
-                      <div className="me-assign-card__header">
-                        <span className="me-acc-avatar" style={{ background: accAvatarColor(account.id) }}>{accInitials(account.name)}</span>
-                        <div className="me-assign-info">
-                          <span className="me-assign-name">{account.name}</span>
-                          <span className="me-assign-meta">{scopeMeta}</span>
-                        </div>
-                        <div className="me-scope-tabs">
-                          {[{ key: 'account', label: 'Account' }, { key: 'groups', label: 'Groups' }, { key: 'units', label: 'Units' }].map(({ key, label }) => (
-                            <button key={key} className={`me-scope-tab${assign.scope === key ? ' active' : ''}`} onClick={() => setScopeForAccount(assign.accountId, key)}>
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        <button className="re-remove-btn" onClick={() => removeAssignment(assign.accountId)}>Remove</button>
-                      </div>
-                      {assign.scope === 'groups' && (
-                        <div className="me-assign-card__body">
-                          <span className="me-assign-body-label">SELECT GROUPS</span>
-                          {account.groups.length === 0 ? (
-                            <span className="me-no-items">This account has no groups yet.</span>
-                          ) : (
-                            <div className="me-item-grid">
-                              {account.groups.map(g => {
-                                const active = assign.groupIds.includes(g.id)
-                                return (
-                                  <button key={g.id} className={`me-item-pill${active ? ' active' : ''}`} onClick={() => toggleGroup(assign.accountId, g.id)}>
-                                    {active && <CheckIcon />}{g.name}<span className="me-item-count">{g.unitIds.length}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {assign.scope === 'units' && (
-                        <div className="me-assign-card__body">
-                          <span className="me-assign-body-label">SELECT UNITS</span>
-                          <div className="me-item-grid">
-                            {account.units.map(u => {
-                              const active = assign.unitIds.includes(u.id)
-                              return (
-                                <button key={u.id} className={`me-item-pill${active ? ' active' : ''}`} onClick={() => toggleUnit(assign.accountId, u.id)}>
-                                  {active && <CheckIcon />}
-                                  <span className={`me-item-type-dot me-item-type-dot--${u.type}`} />
-                                  {u.name}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            {assignmentsLoading ? (
+              <span className="re-members-empty">Loading…</span>
+            ) : dbAssignments.length === 0 ? (
+              <span className="re-members-empty">No access grants yet — click "Add Assignment" to grant access.</span>
+            ) : (() => {
+              const groupMap = new Map()
+              for (const a of dbAssignments) {
+                const accId = a.accountId
+                if (!accId) continue
+                if (!groupMap.has(accId)) groupMap.set(accId, [])
+                groupMap.get(accId).push(a)
+              }
+              return (
+                <div className="me-acc-grant-list">
+                  {[...groupMap.entries()].map(([accId, grants]) => (
+                    <AccountGrantRow
+                      key={accId}
+                      accId={accId}
+                      grants={grants}
+                      accounts={accounts}
+                      onClick={() => setPanelMode(accId)}
+                    />
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         </div>
 
@@ -1382,6 +1362,18 @@ function MemberEditView({ members, loading, onSave }) {
 
       </div>
     </div>
+
+    {panelMode && (
+      <AssignmentPanel
+        accounts={accounts}
+        dbAssignments={dbAssignments}
+        editAccountId={panelMode === 'add' ? null : panelMode}
+        onAdd={handleAddAssignment}
+        onRemove={handleRemoveAssignments}
+        onClose={() => setPanelMode(null)}
+      />
+    )}
+    </>
   )
 }
 
@@ -1396,16 +1388,375 @@ function accAvatarColor(id) {
   return ACC_AVATAR_COLORS[hash % ACC_AVATAR_COLORS.length]
 }
 
-/* ── member invite ────────────────────────────────────────────── */
-const INVITE_ROLES = ['Admin', 'Operator', 'Agent', 'Read-only']
+/* ── AccountGrantRow ──────────────────────────────────────────── */
+function AccountGrantRow({ accId, grants, accounts, onClick }) {
+  const account = accounts.find(a => a.id === accId)
+  if (!account) return null
 
-function MemberInviteView({ onSave }) {
+  const assignedIds   = new Set(grants.map(a => a.scopeId))
+  const totalUnits    = account.units.length
+  const hasFullAccess = totalUnits > 0 && account.units.every(u => assignedIds.has(u.id))
+  const unitCount     = grants.length
+
+  let summary
+  if (hasFullAccess) {
+    summary = 'Full account access'
+  } else {
+    const pCount = grants.filter(a => a.scopeType === 'principal').length
+    const vCount = grants.filter(a => a.scopeType === 'vehicle').length
+    const parts  = []
+    if (pCount > 0) parts.push(`${pCount} ${pCount === 1 ? 'person' : 'people'}`)
+    if (vCount > 0) parts.push(`${vCount} vehicle${vCount !== 1 ? 's' : ''}`)
+    summary = parts.join(' · ') || '—'
+  }
+
+  return (
+    <button className="me-acc-grant-row" onClick={onClick}>
+      <div className="me-acc-grant-info">
+        <span className="me-acc-grant-name">{account.name}</span>
+        <span className="me-acc-grant-summary">{summary}</span>
+      </div>
+      <span className="me-acc-grant-chevron">›</span>
+    </button>
+  )
+}
+
+/* ── AssignmentPanel ──────────────────────────────────────────── */
+const UNIT_STATUS_COLOR = { normal: '#37C2B8', warning: '#E0A63C', duress: '#F2495B', offline: '#66727A' }
+
+function AssignmentPanel({ accounts, dbAssignments, editAccountId, onAdd, onRemove, onClose }) {
+  const editAccount = editAccountId ? accounts.find(a => a.id === editAccountId) ?? null : null
+  const editMode    = !!editAccount
+
+  // Compute initial state once on mount (panel is always freshly mounted)
+  const initialCheckedIds = useMemo(() => {
+    if (!editAccount) return new Set()
+    return new Set(dbAssignments.filter(a => a.accountId === editAccountId).map(a => a.scopeId))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const initialFullAccount = useMemo(() => {
+    if (!editAccount) return false
+    const assigned = dbAssignments.filter(a => a.accountId === editAccountId).map(a => a.scopeId)
+    return editAccount.units.length > 0 && editAccount.units.every(u => assigned.includes(u.id))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [step,            setStep]            = useState(editMode ? 'resources' : 'account')
+  const [selectedAccount, setSelectedAccount] = useState(editAccount)
+  const [checkedIds,      setCheckedIds]      = useState(initialCheckedIds)
+  const [fullAccount,     setFullAccount]     = useState(initialFullAccount)
+  const [search,          setSearch]          = useState('')
+
+  // In add mode, mark units from OTHER accounts as already assigned (grey them out).
+  // Units in the current account are interactive (checked or unchecked).
+  // In edit mode, all units are interactive.
+  const assignedUnitIds = useMemo(() => {
+    if (editMode || !selectedAccount) return new Set()
+    return new Set(
+      dbAssignments
+        .filter(a => a.accountId !== selectedAccount.id)
+        .map(a => a.scopeId)
+    )
+  }, [dbAssignments, editMode, selectedAccount])
+
+  function goToAccount(acc) {
+    setSelectedAccount(acc)
+    setCheckedIds(new Set())
+    setFullAccount(false)
+    setSearch('')
+    setStep('resources')
+  }
+
+  function goBack() {
+    setStep('account')
+    setSelectedAccount(null)
+    setCheckedIds(new Set())
+    setFullAccount(false)
+    setSearch('')
+  }
+
+  function toggleFullAccount() {
+    const newFull = !fullAccount
+    setFullAccount(newFull)
+    if (newFull && selectedAccount) {
+      setCheckedIds(new Set(selectedAccount.units.map(u => u.id)))
+    } else {
+      setCheckedIds(new Set())
+    }
+  }
+
+  function toggleUnit(unitId) {
+    setFullAccount(false)
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(unitId)) next.delete(unitId); else next.add(unitId)
+      return next
+    })
+  }
+
+  function toggleGroup(group) {
+    setFullAccount(false)
+    const assignable = group.unitIds.filter(id => !assignedUnitIds.has(id))
+    const allChecked = assignable.length > 0 && assignable.every(id => checkedIds.has(id))
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (allChecked) assignable.forEach(id => next.delete(id))
+      else            assignable.forEach(id => next.add(id))
+      return next
+    })
+  }
+
+  function buildGrants(ids) {
+    const grants = []
+    for (const id of ids) {
+      const unit = selectedAccount.units.find(u => u.id === id)
+      if (!unit) continue
+      grants.push({ accountId: selectedAccount.id, scopeType: unit.type === 'person' ? 'principal' : 'vehicle', scopeId: id })
+    }
+    return grants
+  }
+
+  async function handleAdd() {
+    if (!selectedAccount || checkedIds.size === 0) return
+    await onAdd(buildGrants(checkedIds))
+    onClose()
+  }
+
+  async function handleSave() {
+    if (!selectedAccount) return
+    const toAdd       = []
+    const toRemoveIds = []
+
+    // Units newly checked
+    for (const id of checkedIds) {
+      if (!initialCheckedIds.has(id)) toAdd.push(...buildGrants([id]))
+    }
+    // Units unchecked
+    for (const a of dbAssignments) {
+      if (a.accountId === selectedAccount.id && !checkedIds.has(a.scopeId)) {
+        toRemoveIds.push(a.id)
+      }
+    }
+
+    if (toAdd.length       > 0) await onAdd(toAdd)
+    if (toRemoveIds.length > 0) await onRemove(toRemoveIds)
+    onClose()
+  }
+
+  const assignedAccountIds = useMemo(
+    () => new Set(dbAssignments.map(a => a.accountId)),
+    [dbAssignments]
+  )
+
+  const filteredAccounts = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return accounts
+      .filter(a => !assignedAccountIds.has(a.id))
+      .filter(a => !q || a.name.toLowerCase().includes(q) || a.type.toLowerCase().includes(q))
+  }, [accounts, search, assignedAccountIds])
+
+  const filteredResources = useMemo(() => {
+    if (!selectedAccount) return { groups: [], people: [], vehicles: [] }
+    const q = search.trim().toLowerCase()
+    return {
+      groups:   q ? selectedAccount.groups.filter(g => g.name.toLowerCase().includes(q)) : selectedAccount.groups,
+      people:   selectedAccount.units.filter(u => u.type === 'person'  && (!q || u.name.toLowerCase().includes(q))),
+      vehicles: selectedAccount.units.filter(u => u.type === 'vehicle' && (!q || u.name.toLowerCase().includes(q))),
+    }
+  }, [selectedAccount, search])
+
+  return (
+    <>
+      <div className="ap-backdrop" onClick={onClose} />
+      <div className="ap-panel">
+        <div className="ap-header">
+          {step === 'resources' && !editMode && (
+            <button className="ap-back" onClick={goBack}>←</button>
+          )}
+          <div className="ap-header__title">
+            <span className="ap-title">
+              {step === 'account' ? 'Add Assignment' : selectedAccount.name}
+            </span>
+            <span className="ap-subtitle">
+              {step === 'account' ? 'Select an account' : editMode ? 'Edit access for this account' : 'Select groups or units to assign'}
+            </span>
+          </div>
+          <button className="ap-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="ap-search-wrap">
+          <ApSearchIcon />
+          <input
+            autoFocus
+            className="ap-search"
+            placeholder={step === 'account' ? 'Search accounts…' : 'Search groups and units…'}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="ap-list">
+          {step === 'account' ? (
+            filteredAccounts.length === 0 ? (
+              <div className="ap-empty">
+                {search ? 'No accounts match your search' : 'All accounts already have access grants'}
+              </div>
+            ) : filteredAccounts.map(acc => {
+              const p = acc.units.filter(u => u.type === 'person').length
+              const v = acc.units.filter(u => u.type === 'vehicle').length
+              return (
+                <button key={acc.id} className="ap-item ap-item--account" onClick={() => goToAccount(acc)}>
+                  <div className="ap-item__info">
+                    <span className="ap-item__primary">{acc.name}</span>
+                    <div className="ap-item__meta-row">
+                      <span className="ap-item__secondary">{acc.type}</span>
+                      <span className="ap-item__tertiary">{p}p · {v}v · {acc.groups.length}g</span>
+                    </div>
+                  </div>
+                  <span className="ap-item__chevron">›</span>
+                </button>
+              )
+            })
+          ) : (
+            <>
+              {(() => {
+                const assignedInAcc  = new Set(dbAssignments.filter(a => a.accountId === selectedAccount.id).map(a => a.scopeId))
+                const alreadyAccount = !editMode && selectedAccount.units.length > 0 && selectedAccount.units.every(u => assignedInAcc.has(u.id))
+                return (
+                  <button
+                    className={`ap-item ap-item--full-account${fullAccount ? ' ap-item--checked' : ''}${alreadyAccount ? ' ap-item--assigned' : ''}`}
+                    onClick={() => !alreadyAccount && toggleFullAccount()}
+                    disabled={alreadyAccount}
+                  >
+                    {!alreadyAccount && <span className={`ap-check${fullAccount ? ' checked' : ''}`} />}
+                    <div className="ap-item__info">
+                      <span className="ap-item__primary">Full Account Access</span>
+                      <span className="ap-item__secondary">
+                        {alreadyAccount ? 'Already assigned' : `All resources · ${selectedAccount.units.length} units · ${selectedAccount.groups.length} groups`}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })()}
+
+              {filteredResources.groups.length > 0 && (
+                <>
+                  <div className="ap-section-label">GROUPS</div>
+                  {filteredResources.groups.map(group => {
+                    const assignable = group.unitIds.filter(id => !assignedUnitIds.has(id))
+                    const allChecked = assignable.length > 0 && assignable.every(id => checkedIds.has(id))
+                    const someChecked = !allChecked && assignable.some(id => checkedIds.has(id))
+                    return (
+                      <button
+                        key={group.id}
+                        className={`ap-item ap-item--group${allChecked ? ' ap-item--checked' : someChecked ? ' ap-item--partial' : ''}`}
+                        onClick={() => toggleGroup(group)}
+                        disabled={assignable.length === 0}
+                      >
+                        <span className={`ap-check${allChecked ? ' checked' : someChecked ? ' partial' : ''}`} />
+                        <div className="ap-item__info">
+                          <span className="ap-item__primary">{group.name}</span>
+                          <span className="ap-item__secondary">{group.unitIds.length} unit{group.unitIds.length !== 1 ? 's' : ''}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
+
+              {filteredResources.people.length > 0 && (
+                <>
+                  <div className="ap-section-label">PEOPLE</div>
+                  {filteredResources.people.map(unit => {
+                    const already  = assignedUnitIds.has(unit.id)
+                    const checked  = checkedIds.has(unit.id)
+                    return (
+                      <button
+                        key={unit.id}
+                        className={`ap-item${checked ? ' ap-item--checked' : ''}${already ? ' ap-item--assigned' : ''}`}
+                        onClick={() => !already && toggleUnit(unit.id)}
+                        disabled={already}
+                      >
+                        {!already && <span className={`ap-check${checked ? ' checked' : ''}`} />}
+                        <div className="ap-item__info">
+                          <span className="ap-item__primary">{unit.name}</span>
+                          {already && <span className="ap-item__assigned-tag">Already assigned</span>}
+                        </div>
+                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#66727A' }}>
+                          {unit.status?.toUpperCase()}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
+
+              {filteredResources.vehicles.length > 0 && (
+                <>
+                  <div className="ap-section-label">VEHICLES</div>
+                  {filteredResources.vehicles.map(unit => {
+                    const already  = assignedUnitIds.has(unit.id)
+                    const checked  = checkedIds.has(unit.id)
+                    return (
+                      <button
+                        key={unit.id}
+                        className={`ap-item${checked ? ' ap-item--checked' : ''}${already ? ' ap-item--assigned' : ''}`}
+                        onClick={() => !already && toggleUnit(unit.id)}
+                        disabled={already}
+                      >
+                        {!already && <span className={`ap-check${checked ? ' checked' : ''}`} />}
+                        <div className="ap-item__info">
+                          <span className="ap-item__primary">{unit.name}</span>
+                          {already && <span className="ap-item__assigned-tag">Already assigned</span>}
+                        </div>
+                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#66727A' }}>
+                          {unit.status?.toUpperCase()}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
+
+              {filteredResources.groups.length === 0 && filteredResources.people.length === 0 && filteredResources.vehicles.length === 0 && (
+                <div className="ap-empty">{search ? 'No matches' : 'No resources in this account'}</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {step === 'resources' && (editMode || checkedIds.size > 0 || fullAccount) && (
+          <div className="ap-footer">
+            <span className="ap-footer__count">
+              {editMode ? `${checkedIds.size + (fullAccount ? 1 : 0)} selected` : fullAccount ? 'Full account access' : `${checkedIds.size} selected`}
+            </span>
+            <button className="ap-footer__done" onClick={editMode ? handleSave : handleAdd}>
+              {editMode ? 'Save Changes' : fullAccount ? 'Add assignment' : `Add ${checkedIds.size} assignment${checkedIds.size !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function ApSearchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/>
+      <path d="M9 9L12 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  )
+}
+const SearchIcon = ApSearchIcon
+
+/* ── member invite ────────────────────────────────────────────── */
+function MemberInviteView({ roles, onSave }) {
   const navigate    = useNavigate()
   const { user }    = useAuth()
-  const [name,  setName]  = useState('')
-  const [email, setEmail] = useState('')
-  const [type,  setType]  = useState('internal')
-  const [role,  setRole]  = useState('Operator')
+  const [name,   setName]   = useState('')
+  const [email,  setEmail]  = useState('')
+  const [type,   setType]   = useState('internal')
+  const defaultRole = roles.find(r => r.name === 'Operator') ?? roles[0] ?? null
+  const [roleId, setRoleId] = useState(defaultRole?.id ?? null)
   const [busy,  setBusy]  = useState(false)
   const [error, setError] = useState('')
 
@@ -1416,14 +1767,14 @@ function MemberInviteView({ onSave }) {
     setBusy(true)
     setError('')
     try {
-      const res  = await fetch(apiUrl('/api/users'), {
+      const res  = await apiFetch(apiUrl('/api/users'), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           name:       name.trim(),
           email:      email.trim().toLowerCase(),
           type,
-          role,
+          roleId,
           inviterSub: user?.sub,
         }),
       })
@@ -1433,7 +1784,6 @@ function MemberInviteView({ onSave }) {
         id:         data.id,
         name:       name.trim(),
         email:      email.trim().toLowerCase(),
-        role,
         twoFactor:  false,
         status:     'offline',
         lastActive: 'Invited',
@@ -1479,146 +1829,18 @@ function MemberInviteView({ onSave }) {
               onChange={setType}
             />
           </div>
-          {type === 'internal' && (
+          {type === 'internal' && roles.length > 0 && (
             <div className="re-field-group">
               <label className="re-field-label">Role</label>
-              <PillGroup options={INVITE_ROLES} value={role} onChange={setRole} />
+              <PillGroup
+                options={roles.map(r => r.name)}
+                value={roles.find(r => r.id === roleId)?.name ?? ''}
+                onChange={name => setRoleId(roles.find(r => r.name === name)?.id ?? null)}
+              />
             </div>
           )}
         </div>
         {error && <p style={{ marginTop: 12, fontSize: 13, color: '#F2495B' }}>{error}</p>}
-      </div>
-    </div>
-  )
-}
-
-/* ── vehicle create ───────────────────────────────────────────── */
-function VehicleCreateView({ onSave }) {
-  const navigate = useNavigate()
-  const [unitId,  setUnitId]  = useState('')
-  const [vehicle, setVehicle] = useState('')
-  const [plate,   setPlate]   = useState('')
-  const [armor,   setArmor]   = useState('Soft skin')
-  const [vin,     setVin]     = useState('')
-
-  const canCreate = unitId.trim().length > 0
-
-  function handleCreate() {
-    if (!canCreate) return
-    onSave({
-      id:       unitId.trim().toUpperCase(),
-      callsign: '—',
-      vehicle:  vehicle.trim() || '—',
-      plate:    plate.trim() || '—',
-      armor,
-      vin:      vin.trim() || '—',
-      status:   'offline',
-    })
-  }
-
-  return (
-    <div className="os-section">
-      <div className="re-header">
-        <button className="re-back" onClick={() => navigate('/admin/settings/vehicles')}>← VEHICLES</button>
-        <div className="re-header__title">
-          <span className="re-header__name" style={{ color: unitId ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
-            {unitId ? `${unitId}${vehicle ? ` · ${vehicle}` : ''}` : 'New vehicle'}
-          </span>
-        </div>
-        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Add vehicle</button>
-      </div>
-
-      <div className="re-block">
-        <span className="re-block__label">VEHICLE DETAILS</span>
-        <div className="re-fields">
-          <div className="re-field-group">
-            <label className="re-field-label">Unit ID <span className="re-required">*</span></label>
-            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-06" value={unitId} onChange={e => setUnitId(e.target.value)} autoFocus />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Make / Model</label>
-            <input className="re-field-input" placeholder="e.g. Cadillac Escalade ESV" value={vehicle} onChange={e => setVehicle(e.target.value)} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Plate</label>
-            <input className="re-field-input re-field-input--mono" placeholder="License plate" value={plate} onChange={e => setPlate(e.target.value)} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Protection level</label>
-            <PillGroup
-              options={['B6 Armored', 'B4 Armored', 'Soft skin']}
-              value={armor}
-              onChange={setArmor}
-            />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">VIN</label>
-            <input className="re-field-input re-field-input--mono" placeholder="17-character VIN" value={vin} onChange={e => setVin(e.target.value)} maxLength={17} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── geofence create ──────────────────────────────────────────── */
-function GeofenceCreateView({ onSave }) {
-  const navigate = useNavigate()
-  const [name,        setName]        = useState('')
-  const [type,        setType]        = useState('SAFE ZONE')
-  const [size,        setSize]        = useState('')
-  const [linkedUnits, setLinkedUnits] = useState('')
-
-  const canCreate = name.trim().length > 0
-
-  function handleCreate() {
-    if (!canCreate) return
-    onSave({
-      id:          `g${Date.now()}`,
-      name:        name.trim(),
-      type,
-      size:        size.trim() || '—',
-      linkedUnits: linkedUnits.trim() || 'All units',
-      active:      true,
-    })
-  }
-
-  return (
-    <div className="os-section">
-      <div className="re-header">
-        <button className="re-back" onClick={() => navigate('/admin/settings/geofences')}>← GEOFENCES</button>
-        <div className="re-header__title">
-          <span className="re-header__name" style={{ color: name ? 'var(--adm-text)' : 'var(--adm-text-dim)' }}>
-            {name || 'New geofence'}
-          </span>
-        </div>
-        <button className="re-save" onClick={handleCreate} disabled={!canCreate}>Create zone</button>
-      </div>
-
-      <div className="re-block">
-        <span className="re-block__label">ZONE DETAILS</span>
-        <div className="re-fields">
-          <div className="re-field-group">
-            <label className="re-field-label">Zone name <span className="re-required">*</span></label>
-            <input className="re-field-input" placeholder="e.g. Residence — Highland Park" value={name} onChange={e => setName(e.target.value)} autoFocus />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Type</label>
-            <PillGroup
-              options={['SAFE ZONE', 'CORRIDOR', 'EXCLUSION', 'WAYPOINT']}
-              value={type}
-              onChange={setType}
-            />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Size</label>
-            <input className="re-field-input re-field-input--mono" placeholder="e.g. 400 m radius" value={size} onChange={e => setSize(e.target.value)} />
-          </div>
-          <div className="re-field-group">
-            <label className="re-field-label">Linked units</label>
-            <input className="re-field-input re-field-input--mono" placeholder="e.g. SP-01, SP-02 or All units" value={linkedUnits} onChange={e => setLinkedUnits(e.target.value)} />
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -1697,9 +1919,7 @@ const AVATAR_PALETTES = [
 function Avatar({ name, role, size }) {
   const parts = name.trim().split(' ')
   const initials = ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase()
-  const palette = (role === 'Owner' || role === 'Admin')
-    ? AVATAR_PALETTES[0]
-    : AVATAR_PALETTES[2]
+  const palette = role === 'Admin' ? AVATAR_PALETTES[0] : AVATAR_PALETTES[2]
   return (
     <span
       className={`os-avatar${size === 'lg' ? ' os-avatar--lg' : ''}`}

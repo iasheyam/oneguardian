@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { mockFeeds } from '../data/mockFeeds'
-import { mockUnits  } from '../data/mockUnits'
 import './Feed.css'
 
 const UNIT_STATUS_META = {
@@ -84,9 +83,8 @@ export default function Feed() {
 
 /* ── feed tile ────────────────────────────────────────────────── */
 function FeedTile({ feed, onOpen }) {
-  const unit     = mockUnits.find(u => u.id === feed.unitId)
   const isLive   = feed.status === 'live'
-  const unitMeta = UNIT_STATUS_META[unit?.status ?? 'offline']
+  const unitMeta = UNIT_STATUS_META['offline']
 
   return (
     <div
@@ -122,7 +120,7 @@ function FeedTile({ feed, onOpen }) {
 
         {/* bottom overlay */}
         <div className="feed-tile__bottom">
-          <span className="feed-tile__location">{unit?.location ?? '—'}</span>
+          <span className="feed-tile__location">—</span>
           {isLive && <FeedClock />}
         </div>
 
@@ -139,9 +137,8 @@ function FeedTile({ feed, onOpen }) {
 
 /* ── fullscreen overlay ───────────────────────────────────────── */
 function FeedFullscreen({ feed, onClose }) {
-  const unit   = mockUnits.find(u => u.id === feed.unitId)
-  const isLive = feed.status === 'live'
-  const unitMeta = UNIT_STATUS_META[unit?.status ?? 'offline']
+  const isLive   = feed.status === 'live'
+  const unitMeta = UNIT_STATUS_META['offline']
 
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose() }
@@ -185,26 +182,6 @@ function FeedFullscreen({ feed, onClose }) {
         {/* bottom overlay */}
         <div className="feed-fs-bottom">
           <div className="feed-fs-meta">
-            {unit && (
-              <>
-                <span className="feed-fs-meta__item">
-                  <span className="feed-fs-meta__label">LOCATION</span>
-                  <span className="feed-fs-meta__value">{unit.location}</span>
-                </span>
-                {unit.speed != null && isLive && (
-                  <span className="feed-fs-meta__item">
-                    <span className="feed-fs-meta__label">SPEED</span>
-                    <span className="feed-fs-meta__value">{unit.speed} MPH · HDG {unit.heading}°</span>
-                  </span>
-                )}
-                {unit.principal && (
-                  <span className="feed-fs-meta__item">
-                    <span className="feed-fs-meta__label">PRINCIPAL</span>
-                    <span className="feed-fs-meta__value">{unit.principal}</span>
-                  </span>
-                )}
-              </>
-            )}
           </div>
           {isLive && <FeedClock />}
         </div>

@@ -17,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1083.0",
     "amazon-cognito-identity-js": "^6.3.20",
+    "aws-jwt-verify": "^5.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

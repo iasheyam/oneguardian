@@ -4,7 +4,7 @@ import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/mapb
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
-import { apiUrl } from '../../../shared/utils/api'
+import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import './UnitDetail.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -69,10 +69,11 @@ export default function VehicleDetail() {
     return { vehicle: null, account: null }
   }, [accounts, id])
 
-  const traccarDeviceId = useMemo(
-    () => vehicle?.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId ?? null,
-    [vehicle]
-  )
+  const traccarDeviceId = useMemo(() => (
+    vehicle?.devices?.find(d => d.id === vehicle.primaryDeviceId)?.traccarDeviceId
+    ?? vehicle?.devices?.find(d => d.traccarDeviceId)?.traccarDeviceId
+    ?? null
+  ), [vehicle])
 
   const livePositions = useLivePositions()
   const livePos       = traccarDeviceId ? livePositions[traccarDeviceId] : null
@@ -97,7 +98,7 @@ export default function VehicleDetail() {
     setLoadingRoute(true)
     const from = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
     const to   = new Date().toISOString()
-    fetch(apiUrl(`/api/traccar/positions/${traccarDeviceId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`))
+    apiFetch(apiUrl(`/api/traccar/positions/${traccarDeviceId}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`))
       .then(r => r.json())
       .then(positions => setRouteCoords(positions.map(p => [p.longitude, p.latitude])))
       .catch(() => {})
