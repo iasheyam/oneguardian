@@ -807,16 +807,21 @@ app.patch('/api/accounts/:accountId/units/:unitId/primary-device', ...requirePer
 app.use('/api/traccar', ...requirePermission('ops'))
 
 app.get('/api/live', authenticate, (req, res) => {
-  res.setHeader('Content-Type',  'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection',    'keep-alive')
+  res.setHeader('Content-Type',       'text/event-stream')
+  res.setHeader('Cache-Control',      'no-cache')
+  res.setHeader('Connection',         'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
-  // Send current position cache immediately on connect
   res.write(`data: ${JSON.stringify({ type: 'snapshot', positions: getPositionCache() })}\n\n`)
 
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 30000)
+
   addSseClient(res)
-  req.on('close', () => removeSseClient(res))
+  req.on('close', () => {
+    clearInterval(heartbeat)
+    removeSseClient(res)
+  })
 })
 
 app.get('/api/traccar/devices', async (req, res) => {
