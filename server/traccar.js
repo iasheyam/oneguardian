@@ -1,4 +1,7 @@
 import WebSocket from 'ws'
+import { evaluatePositionTriggers, getDeviceAccount } from './triggerEngine.js'
+import { handleGeofenceEvent } from './geofenceAlerts.js'
+import { broadcast, broadcastToAccount } from './sse.js'
 
 const TRACCAR_URL  = process.env.TRACCAR_URL
 const TRACCAR_USER = process.env.TRACCAR_USER
@@ -8,16 +11,6 @@ const basicAuth = Buffer.from(`${TRACCAR_USER}:${TRACCAR_PASS}`).toString('base6
 
 // Latest position per Traccar device ID
 const positionCache = new Map()
-
-// Connected SSE clients
-const sseClients = new Set()
-
-function broadcast(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`
-  for (const res of sseClients) {
-    try { res.write(msg) } catch {}
-  }
-}
 
 // Traccar WebSocket requires a session cookie, not Basic Auth
 async function getSessionCookie() {
@@ -58,7 +51,24 @@ async function connect() {
         for (const pos of msg.positions) {
           positionCache.set(pos.deviceId, pos)
         }
+        try {
+          evaluatePositionTriggers(msg.positions)
+        } catch (err) {
+          console.error('[traccar] trigger evaluation error:', err.message)
+        }
         broadcast({ type: 'positions', positions: msg.positions })
+
+        // Broadcast to client SSE, grouped by account
+        const byAccount = new Map()
+        for (const pos of msg.positions) {
+          const accountId = getDeviceAccount(pos.deviceId)
+          if (!accountId) continue
+          if (!byAccount.has(accountId)) byAccount.set(accountId, [])
+          byAccount.get(accountId).push(pos)
+        }
+        for (const [accountId, positions] of byAccount) {
+          broadcastToAccount(accountId, { type: 'positions', positions })
+        }
       }
 
       if (msg.devices?.length) {
@@ -66,6 +76,14 @@ async function connect() {
       }
 
       if (msg.events?.length) {
+        for (const event of msg.events) {
+          if (event.type === 'geofenceEnter' || event.type === 'geofenceExit') {
+            const pos = positionCache.get(event.deviceId) ?? null
+            handleGeofenceEvent(event, pos).catch(err =>
+              console.error('[traccar] geofence alert error:', err.message)
+            )
+          }
+        }
         broadcast({ type: 'events', events: msg.events })
       }
     } catch (err) {
@@ -93,13 +111,6 @@ export function getPositionCache() {
   return Object.fromEntries(positionCache)
 }
 
-export function addSseClient(res) {
-  sseClients.add(res)
-}
-
-export function removeSseClient(res) {
-  sseClients.delete(res)
-}
 
 export async function createTraccarDevice(name, uniqueId) {
   const res = await fetch(`${TRACCAR_URL}/api/devices`, {

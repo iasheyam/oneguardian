@@ -9,6 +9,7 @@
     "start": "concurrently \"npm run dev\" \"npm run server\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "NODE_TLS_REJECT_UNAUTHORIZED=0 drizzle-kit migrate",
+    "db:seed:triggers": "NODE_TLS_REJECT_UNAUTHORIZED=0 node db/seeds/triggers.js",
     "db:studio": "NODE_TLS_REJECT_UNAUTHORIZED=0 drizzle-kit studio",
     "build": "vite build",
     "lint": "oxlint",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1083.0",
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "amazon-cognito-identity-js": "^6.3.20",
     "aws-jwt-verify": "^5.2.1",
     "cors": "^2.8.6",

@@ -995,6 +995,8 @@
   animation: ac-panel-in 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+.ac-panel--wide { width: 620px; }
+
 @keyframes ac-panel-in {
   from { transform: translateX(40px); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
@@ -1845,4 +1847,714 @@
   padding: 2px 6px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ── assign user section ──────────────────── */
+.ac-input--flex { flex: 1; min-width: 0; }
+
+.ac-user-assign {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ac-user-assign__assigned {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(55,194,184,0.06);
+  border: 1px solid rgba(55,194,184,0.2);
+  border-radius: 6px;
+}
+
+.ac-user-assign__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ac-user-assign__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-user-assign__email {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  color: var(--adm-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-user-assign__input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ac-user-assign__confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(224,166,60,0.06);
+  border: 1px solid rgba(224,166,60,0.25);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.ac-user-assign__found-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--adm-text-dim);
+}
+
+.ac-user-assign__found-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-primary);
+  flex: 1;
+}
+
+.ac-user-assign__confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.ac-user-assign__error {
+  font-size: 12px;
+  color: #F2495B;
+  padding: 2px 0;
+}
+
+/* ═══════════════════════════════════════════
+   PLACES
+═══════════════════════════════════════════ */
+.ac-grid--places {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.ac-place-card {
+  background: var(--adm-bg-panel);
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ac-place-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ac-place-card__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ac-place-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-place-card__actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.ac-place-card:hover .ac-place-card__actions { opacity: 1; }
+
+.ac-place-card__address {
+  font-size: 11px;
+  color: var(--adm-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-place-card__radius {
+  font-size: 11px;
+  font-family: var(--adm-mono);
+  color: var(--adm-text-dim);
+  letter-spacing: 0.03em;
+}
+
+/* ── Place search ─────────────────────────── */
+.ac-place-search { position: relative; }
+
+.ac-place-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--adm-bg-raised);
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+.ac-place-suggestion {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--adm-border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.ac-place-suggestion:last-child { border-bottom: none; }
+.ac-place-suggestion:hover { background: var(--adm-border); }
+
+.ac-place-suggestion__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-text);
+}
+
+.ac-place-suggestion__sub {
+  font-size: 11px;
+  color: var(--adm-text-dim);
+}
+
+.ac-place-resolved {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #37C2B8;
+}
+
+/* ── Map preview ──────────────────────────── */
+.ac-place-map-preview {
+  height: 180px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--adm-border);
+  margin-bottom: 4px;
+}
+
+/* ── Place marker ─────────────────────────── */
+.ac-place-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 0 6px rgba(255,255,255,0.08);
+}
+
+/* ── Color swatches ───────────────────────── */
+.ac-place-colors {
+  display: flex;
+  gap: 8px;
+}
+
+.ac-place-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+  outline: none;
+  padding: 0;
+}
+.ac-place-color-swatch.is-active {
+  border-color: var(--adm-text);
+  transform: scale(1.2);
+}
+
+/* ── Range input ──────────────────────────── */
+.ac-range {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  accent-color: #37C2B8;
+}
+
+/* ═══════════════════════════════════════════
+   PLANS
+═══════════════════════════════════════════ */
+.ac-grid--plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+/* ── Plan card ──────────────────────────────── */
+.ac-plan-card {
+  background: var(--adm-bg-panel);
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.15s;
+}
+.ac-plan-card.is-disabled { opacity: 0.5; }
+
+.ac-plan-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ac-plan-card__title-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ac-plan-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-plan-card__unit {
+  font-size: 11px;
+  color: var(--adm-text-dim);
+}
+
+.ac-plan-card__actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.ac-plan-card:hover .ac-plan-card__actions { opacity: 1; }
+
+.ac-plan-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ac-plan-chip--recurring {
+  color: #37C2B8;
+  background: rgba(55,194,184,0.1);
+  border-color: rgba(55,194,184,0.3);
+}
+
+.ac-plan-chip--onetime {
+  color: #E0A63C;
+  background: rgba(224,166,60,0.1);
+  border-color: rgba(224,166,60,0.3);
+}
+
+.ac-plan-card__days {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  color: var(--adm-text-dim);
+  letter-spacing: 0.04em;
+}
+
+.ac-plan-card__time {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  color: var(--adm-text-muted);
+}
+
+.ac-plan-card__legs {
+  font-size: 10px;
+  color: var(--adm-text-muted);
+}
+
+.ac-plan-card__off {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  color: var(--adm-text-muted);
+}
+
+/* ── Plan form ──────────────────────────────── */
+.ac-plan-type-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--adm-border);
+  border-radius: 7px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.ac-plan-type-btn {
+  background: none;
+  border: none;
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--adm-text-dim);
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.ac-plan-type-btn + .ac-plan-type-btn {
+  border-left: 1px solid var(--adm-border);
+}
+.ac-plan-type-btn.is-active {
+  background: var(--adm-secure, #37C2B8);
+  color: #000;
+}
+
+/* ── Plan legs ──────────────────────────────── */
+.ac-plan-legs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  margin-top: 4px;
+}
+
+.ac-plan-leg {
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ac-plan-leg__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ac-plan-leg__num {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  color: var(--adm-text-dim);
+}
+
+.ac-plan-leg__places {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ac-plan-leg__time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* ── Unit assignment section ────────────────── */
+.ac-plan-section-divider {
+  border: none;
+  border-top: 1px solid var(--adm-border);
+  margin: 8px 0 4px;
+}
+
+.ac-plan-unit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.ac-plan-unit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(55,194,184,0.12);
+  border: 1px solid rgba(55,194,184,0.35);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #37C2B8;
+  padding: 3px 8px;
+}
+
+.ac-plan-unit-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+.ac-plan-unit-chip button:hover { opacity: 1; }
+
+.ac-plan-unit-search { position: relative; }
+
+.ac-plan-unit-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--adm-bg-raised);
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ac-plan-unit-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--adm-border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.ac-plan-unit-result:last-child { border-bottom: none; }
+.ac-plan-unit-result:hover { background: var(--adm-border); }
+.ac-plan-unit-result.is-selected { background: rgba(55,194,184,0.06); }
+
+.ac-plan-unit-result__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-text);
+  flex: 1;
+}
+
+.ac-plan-unit-result__type {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--adm-text-muted);
+}
+
+.ac-plan-unit-result__check {
+  font-size: 11px;
+  color: #37C2B8;
+}
+
+/* ── Day-of-week buttons ───────────────────── */
+.ac-plan-days {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ac-plan-day-btn {
+  background: none;
+  border: 1px solid var(--adm-border);
+  border-radius: 5px;
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--adm-text-dim);
+  padding: 4px 7px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.ac-plan-day-btn.is-active {
+  background: rgba(55,194,184,0.15);
+  border-color: rgba(55,194,184,0.5);
+  color: #37C2B8;
+}
+
+/* ═══════════════════════════════════════════
+   LOCATION PICKER
+═══════════════════════════════════════════ */
+
+/* ── Selected state ─────────────────────────── */
+.ac-loc-selected {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--adm-bg-raised);
+  border: 1px solid var(--adm-border);
+  border-radius: 7px;
+  padding: 7px 10px;
+}
+
+.ac-loc-selected__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ac-loc-selected__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-loc-selected__clear {
+  background: none;
+  border: none;
+  color: var(--adm-text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+.ac-loc-selected__clear:hover { color: #F2495B; }
+
+/* ── Search + dropdown ───────────────────────── */
+.ac-loc-search { position: relative; }
+
+.ac-loc-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--adm-bg-raised);
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 30;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ac-loc-dropdown__section {
+  font-family: var(--adm-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--adm-text-muted);
+  padding: 8px 12px 4px;
+  background: var(--adm-bg-panel);
+  position: sticky;
+  top: 0;
+}
+
+.ac-loc-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--adm-border);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.ac-loc-result:last-child { border-bottom: none; }
+.ac-loc-result:hover { background: rgba(255,255,255,0.04); }
+
+.ac-loc-result__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ac-loc-result__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ac-loc-result__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-loc-result__addr {
+  font-size: 10.5px;
+  color: var(--adm-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-loc-result--map .ac-loc-result__name { color: var(--adm-text-dim); }
+
+.ac-loc-result__badge {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #37C2B8;
+  border: 1px solid rgba(55,194,184,0.35);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+/* ── Inline add-place form ───────────────────── */
+.ac-loc-adding {
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--adm-bg-raised);
+}
+
+.ac-loc-adding__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
 }

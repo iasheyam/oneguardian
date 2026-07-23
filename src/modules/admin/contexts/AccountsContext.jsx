@@ -86,6 +86,12 @@ export function AccountsProvider({ children }) {
     }))
   }
 
+  function setUnitUser(accountId, unitId, userData) {
+    setAccounts(p => p.map(a => a.id !== accountId ? a : {
+      ...a, units: a.units.map(u => u.id !== unitId ? u : { ...u, ...userData }),
+    }))
+  }
+
   async function deleteUnit(accountId, unitId) {
     const type     = unitKind(accountId, unitId)
     const endpoint = type === 'person'
@@ -201,7 +207,7 @@ export function AccountsProvider({ children }) {
     <Ctx.Provider value={{
       accounts, loading,
       createAccount, updateAccount, deleteAccount,
-      createUnit, updateUnit, deleteUnit,
+      createUnit, updateUnit, deleteUnit, setUnitUser,
       createDevice, updateDevice, deleteDevice, setPrimaryDevice,
       createGroup, renameGroup, deleteGroup,
       addUnitToGroup, removeUnitFromGroup,

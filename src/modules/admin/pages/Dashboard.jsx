@@ -4,9 +4,15 @@ import Map, { Marker, Popup, NavigationControl, AttributionControl } from 'react
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
+import { MapSearch, MapStyleToggle, SearchPinMarker } from '../components/MapSearch'
 import './Dashboard.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+
+const MAP_STYLES = {
+  dark:      'mapbox://styles/mapbox/dark-v11',
+  satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
+}
 
 const STATUS_META = {
   normal:  { color: '#37C2B8', label: 'SECURE'  },
@@ -45,6 +51,8 @@ export default function Dashboard() {
   const [loadingPolice,   setLoadingPolice]   = useState(false)
   const [loadingHospital, setLoadingHospital] = useState(false)
   const [selectedPOI,     setSelectedPOI]     = useState(null)
+  const [mapStyle,        setMapStyle]        = useState('dark')
+  const [searchPin,       setSearchPin]       = useState(null)
 
   // Flatten all real units across accounts; attach primary device live position
   const displayUnits = useMemo(() => {
@@ -108,6 +116,14 @@ export default function Dashboard() {
     const unit = displayUnits.find(u => u.id === id)
     if (unit?.lat != null && mapRef.current) {
       mapRef.current.flyTo({ center: [unit.lng, unit.lat], zoom: 14, duration: 900 })
+    }
+  }
+
+  function flyToPlace(lng, lat, bbox) {
+    if (bbox) {
+      mapRef.current?.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 80, duration: 1000, maxZoom: 15 })
+    } else {
+      mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 900 })
     }
   }
 
@@ -213,11 +229,20 @@ export default function Dashboard() {
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
+          mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
           <NavigationControl position="bottom-right" showCompass={false} />
           <AttributionControl compact position="bottom-left" />
+
+          <MapSearch onFlyTo={flyToPlace} onPin={setSearchPin} />
+          <MapStyleToggle style={mapStyle} onChange={setMapStyle} />
+
+          {searchPin && (
+            <Marker longitude={searchPin.lng} latitude={searchPin.lat} anchor="bottom">
+              <SearchPinMarker onDismiss={() => setSearchPin(null)} />
+            </Marker>
+          )}
 
           {policeMarkers.map(poi => (
             <Marker key={poi.id} longitude={poi.lng} latitude={poi.lat} anchor="center"

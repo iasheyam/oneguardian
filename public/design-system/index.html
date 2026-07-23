@@ -1,0 +1,503 @@
+<title>TelematicsGuardian — Colour System</title>
+
+<style>
+/* ── meta tokens (page chrome, deliberately neutral) ──────── */
+:root {
+  --pg-bg:       #F2F3F6;
+  --pg-surface:  #FFFFFF;
+  --pg-border:   #DCDEE5;
+  --pg-text:     #16181F;
+  --pg-text-2:   #686B78;
+  --pg-rule:     #E4E6ED;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pg-bg:       #101215;
+    --pg-surface:  #191C22;
+    --pg-border:   #272B35;
+    --pg-text:     #C6CAD6;
+    --pg-text-2:   #606473;
+    --pg-rule:     #1F2229;
+  }
+}
+:root[data-theme="light"] {
+  --pg-bg:       #F2F3F6;
+  --pg-surface:  #FFFFFF;
+  --pg-border:   #DCDEE5;
+  --pg-text:     #16181F;
+  --pg-text-2:   #686B78;
+  --pg-rule:     #E4E6ED;
+}
+:root[data-theme="dark"] {
+  --pg-bg:       #101215;
+  --pg-surface:  #191C22;
+  --pg-border:   #272B35;
+  --pg-text:     #C6CAD6;
+  --pg-text-2:   #606473;
+  --pg-rule:     #1F2229;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+button { cursor: pointer; border: none; background: none; font: inherit; }
+
+body {
+  background: var(--pg-bg);
+  color: var(--pg-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── header ──────────────────────────────────────────────── */
+.ph {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--pg-bg);
+  border-bottom: 1px solid var(--pg-border);
+  padding: 0 28px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ph-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ph-brand-name {
+  font-weight: 600;
+  color: var(--pg-text);
+  letter-spacing: 0.06em;
+}
+.ph-brand-sep {
+  color: var(--pg-border);
+  font-weight: 300;
+}
+.ph-brand-section {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+  font-size: 11px;
+  color: var(--pg-text-2);
+  letter-spacing: 0.05em;
+}
+
+.ph-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--pg-surface);
+  border: 1px solid var(--pg-border);
+  padding: 3px;
+  border-radius: 5px;
+}
+.ph-btn {
+  padding: 3px 11px;
+  font-size: 12px;
+  color: var(--pg-text-2);
+  border-radius: 3px;
+  transition: background 0.1s, color 0.1s;
+}
+.ph-btn.on {
+  background: var(--pg-border);
+  color: var(--pg-text);
+}
+
+/* ── main ────────────────────────────────────────────────── */
+.pm {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 36px 28px 72px;
+}
+
+.pm-intro {
+  font-size: 13px;
+  color: var(--pg-text-2);
+  max-width: 520px;
+  margin-bottom: 28px;
+  line-height: 1.6;
+}
+
+/* ── grid ────────────────────────────────────────────────── */
+.pg {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 720px)  { .pg { grid-template-columns: 1fr; } }
+@media (min-width: 721px)  and (max-width: 1040px) { .pg { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1041px) and (max-width: 1300px) { .pg { grid-template-columns: repeat(3, 1fr); } }
+
+/* ── card ────────────────────────────────────────────────── */
+.pc {
+  border: 1px solid var(--pg-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* card header */
+.pc-head {
+  padding: 14px 16px 13px;
+  background: var(--pg-surface);
+  border-bottom: 1px solid var(--pg-border);
+}
+.pc-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.pc-option {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pg-text-2);
+  margin-bottom: 2px;
+}
+.pc-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--pg-text);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+.pc-rec {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border: 1px solid var(--pg-border);
+  color: var(--pg-text-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.pc-tagline {
+  font-size: 11px;
+  color: var(--pg-text-2);
+  letter-spacing: 0.01em;
+}
+
+/* mode sections */
+.pc-mode {
+  padding: 11px 12px 12px;
+  flex: 1;
+}
+.pc-mode + .pc-mode {
+  border-top: none;
+}
+
+.pc-mode-label {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 9px;
+}
+
+.sw-row {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+.sw-row:last-child { margin-bottom: 0; }
+
+.sw {
+  flex: 1;
+  min-width: 0;
+}
+.sw-block {
+  height: 44px;
+  width: 100%;
+  box-shadow: inset 0 0 0 1px rgba(127,127,127,0.12);
+  margin-bottom: 5px;
+}
+.sw-meta {
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
+.sw-name {
+  font-size: 7.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.3;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sw-hex {
+  font-size: 8.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* preview strip */
+.pc-preview {
+  display: flex;
+  border-top: 1px solid var(--pg-border);
+}
+.pc-preview-half {
+  flex: 1;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pv-btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 11px;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+.pv-link {
+  font-size: 11px;
+  cursor: pointer;
+}
+.pv-badge {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  line-height: 1.5;
+}
+
+/* ── section title ───────────────────────────────────────── */
+.section-label {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--pg-text-2);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--pg-rule);
+}
+</style>
+
+<header class="ph">
+  <div class="ph-brand">
+    <span class="ph-brand-name">TelematicsGuardian</span>
+    <span class="ph-brand-sep">/</span>
+    <span class="ph-brand-section">colour-system</span>
+  </div>
+  <div class="ph-toggle">
+    <button class="ph-btn" id="btn-light" onclick="setTheme('light')">Light</button>
+    <button class="ph-btn" id="btn-dark"  onclick="setTheme('dark')">Dark</button>
+  </div>
+</header>
+
+<main class="pm">
+  <p class="pm-intro">Three palette directions. Each colour block renders on its actual background — dark swatches on the dark ground, light swatches on the light ground. The preview strip at the bottom of each card shows the accent in context.</p>
+
+  <div class="section-label">Palette Options</div>
+  <div class="pg" id="grid"></div>
+</main>
+
+<script>
+const MONO = "ui-monospace,'SF Mono','Cascadia Code',monospace"
+
+const palettes = [
+  {
+    id: 'A', name: 'Tactical', tagline: 'Security · Ops · Teal', recommended: true,
+    dark: [
+      { name: 'Background',     hex: '#0D1117' },
+      { name: 'Surface',        hex: '#161B22' },
+      { name: 'Surface+',       hex: '#1C2128' },
+      { name: 'Border',         hex: '#30363D' },
+      { name: 'Text Primary',   hex: '#E6EDF3' },
+      { name: 'Text Muted',     hex: '#8B949E' },
+      { name: 'Accent',         hex: '#2DD4BF' },
+      { name: 'Danger',         hex: '#F85149' },
+      { name: 'Warning',        hex: '#E3B341' },
+      { name: 'Success',        hex: '#3FB950' },
+    ],
+    light: [
+      { name: 'Background',     hex: '#F4F6F8' },
+      { name: 'Surface',        hex: '#FFFFFF' },
+      { name: 'Surface+',       hex: '#EAECEF' },
+      { name: 'Border',         hex: '#D0D7DE' },
+      { name: 'Text Primary',   hex: '#1C2128' },
+      { name: 'Text Muted',     hex: '#57606A' },
+      { name: 'Accent',         hex: '#0D9488' },
+      { name: 'Danger',         hex: '#CF222E' },
+      { name: 'Warning',        hex: '#9A6700' },
+      { name: 'Success',        hex: '#1A7F37' },
+    ],
+  },
+  {
+    id: 'B', name: 'Navy', tagline: 'Premium · Enterprise · Indigo',
+    dark: [
+      { name: 'Background',     hex: '#0A0F1E' },
+      { name: 'Surface',        hex: '#111827' },
+      { name: 'Surface+',       hex: '#1F2937' },
+      { name: 'Border',         hex: '#374151' },
+      { name: 'Text Primary',   hex: '#F9FAFB' },
+      { name: 'Text Muted',     hex: '#9CA3AF' },
+      { name: 'Accent',         hex: '#818CF8' },
+      { name: 'Danger',         hex: '#EF4444' },
+      { name: 'Warning',        hex: '#F59E0B' },
+      { name: 'Success',        hex: '#10B981' },
+    ],
+    light: [
+      { name: 'Background',     hex: '#F0F4FF' },
+      { name: 'Surface',        hex: '#FFFFFF' },
+      { name: 'Surface+',       hex: '#E8EEFF' },
+      { name: 'Border',         hex: '#C7D2FE' },
+      { name: 'Text Primary',   hex: '#111827' },
+      { name: 'Text Muted',     hex: '#6B7280' },
+      { name: 'Accent',         hex: '#4F46E5' },
+      { name: 'Danger',         hex: '#DC2626' },
+      { name: 'Warning',        hex: '#D97706' },
+      { name: 'Success',        hex: '#059669' },
+    ],
+  },
+  {
+    id: 'C', name: 'Slate', tagline: 'Minimal · Precise · Cyan',
+    dark: [
+      { name: 'Background',     hex: '#0F172A' },
+      { name: 'Surface',        hex: '#1E293B' },
+      { name: 'Surface+',       hex: '#334155' },
+      { name: 'Border',         hex: '#475569' },
+      { name: 'Text Primary',   hex: '#F1F5F9' },
+      { name: 'Text Muted',     hex: '#94A3B8' },
+      { name: 'Accent',         hex: '#22D3EE' },
+      { name: 'Danger',         hex: '#F43F5E' },
+      { name: 'Warning',        hex: '#FB923C' },
+      { name: 'Success',        hex: '#34D399' },
+    ],
+    light: [
+      { name: 'Background',     hex: '#F8FAFC' },
+      { name: 'Surface',        hex: '#FFFFFF' },
+      { name: 'Surface+',       hex: '#F1F5F9' },
+      { name: 'Border',         hex: '#CBD5E1' },
+      { name: 'Text Primary',   hex: '#0F172A' },
+      { name: 'Text Muted',     hex: '#64748B' },
+      { name: 'Accent',         hex: '#0891B2' },
+      { name: 'Danger',         hex: '#E11D48' },
+      { name: 'Warning',        hex: '#EA580C' },
+      { name: 'Success',        hex: '#059669' },
+    ],
+  },
+  {
+    id: 'D', name: 'Obsidian', tagline: 'Modern · Premium · Gold',
+    dark: [
+      { name: 'Background',     hex: '#0E0C0D' },
+      { name: 'Surface',        hex: '#181517' },
+      { name: 'Surface+',       hex: '#221E1F' },
+      { name: 'Border',         hex: '#332D2F' },
+      { name: 'Text Primary',   hex: '#F0EBE3' },
+      { name: 'Text Muted',     hex: '#8A827A' },
+      { name: 'Accent',         hex: '#C9A84C' },
+      { name: 'Danger',         hex: '#E05252' },
+      { name: 'Warning',        hex: '#D4924A' },
+      { name: 'Success',        hex: '#5AB875' },
+    ],
+    light: [
+      { name: 'Background',     hex: '#FAF8F5' },
+      { name: 'Surface',        hex: '#FFFFFF' },
+      { name: 'Surface+',       hex: '#F2EFE9' },
+      { name: 'Border',         hex: '#E0D9D0' },
+      { name: 'Text Primary',   hex: '#1A1714' },
+      { name: 'Text Muted',     hex: '#7A7269' },
+      { name: 'Accent',         hex: '#9B7A2A' },
+      { name: 'Danger',         hex: '#C53030' },
+      { name: 'Warning',        hex: '#B36B1A' },
+      { name: 'Success',        hex: '#2E7D45' },
+    ],
+  },
+]
+
+function swatchRow(tokens, labelColor) {
+  return tokens.map(t => `
+    <div class="sw">
+      <div class="sw-block" style="background:${t.hex}"></div>
+      <div class="sw-meta" style="color:${labelColor}">
+        <div class="sw-name">${t.name}</div>
+        <div class="sw-hex">${t.hex}</div>
+      </div>
+    </div>
+  `).join('')
+}
+
+function hex2rgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16)
+  const g = parseInt(hex.slice(3,5),16)
+  const b = parseInt(hex.slice(5,7),16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
+function card(p) {
+  const db  = p.dark[0].hex,  dm = p.dark[5].hex,  da = p.dark[6].hex
+  const lb  = p.light[0].hex, lm = p.light[5].hex, la = p.light[6].hex
+  const lbr = p.light[3].hex
+
+  return `
+    <div class="pc">
+      <div class="pc-head">
+        <div class="pc-head-top">
+          <div>
+            <div class="pc-option">Option ${p.id}</div>
+            <div class="pc-name">${p.name}</div>
+          </div>
+          ${p.recommended ? '<div class="pc-rec">Recommended</div>' : ''}
+        </div>
+        <div class="pc-tagline">${p.tagline}</div>
+      </div>
+
+      <div class="pc-mode" style="background:${db}">
+        <div class="pc-mode-label" style="color:${dm}">Dark</div>
+        <div class="sw-row">${swatchRow(p.dark.slice(0,5), dm)}</div>
+        <div class="sw-row">${swatchRow(p.dark.slice(5),   dm)}</div>
+      </div>
+
+      <div class="pc-mode" style="background:${lb};border-top:1px solid ${lbr}">
+        <div class="pc-mode-label" style="color:${lm}">Light</div>
+        <div class="sw-row">${swatchRow(p.light.slice(0,5), lm)}</div>
+        <div class="sw-row">${swatchRow(p.light.slice(5),   lm)}</div>
+      </div>
+
+      <div class="pc-preview">
+        <div class="pc-preview-half" style="background:${db}">
+          <button class="pv-btn" style="background:${da};color:${db}">Action</button>
+          <span class="pv-link" style="color:${da}">Details →</span>
+          <span class="pv-badge" style="background:${hex2rgba(da,.12)};color:${da};border:1px solid ${hex2rgba(da,.3)}">Active</span>
+        </div>
+        <div class="pc-preview-half" style="background:${lb};border-left:1px solid ${lbr}">
+          <button class="pv-btn" style="background:${la};color:${lb}">Action</button>
+          <span class="pv-link" style="color:${la}">Details →</span>
+          <span class="pv-badge" style="background:${hex2rgba(la,.12)};color:${la};border:1px solid ${hex2rgba(la,.3)}">Active</span>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+document.getElementById('grid').innerHTML = palettes.map(card).join('')
+
+function setTheme(t) {
+  document.documentElement.dataset.theme = t
+  document.getElementById('btn-light').classList.toggle('on', t === 'light')
+  document.getElementById('btn-dark').classList.toggle('on',  t === 'dark')
+}
+
+const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+setTheme(dark ? 'dark' : 'light')
+</script>

@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
+import UnitTriggers from '../components/UnitTriggers'
+import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import './Accounts.css'
 
 /* ── constants ────────────────────────────────────────────────── */
@@ -25,6 +29,8 @@ const DEVICE_TYPES = {
   other:  { label: 'Other',   color: '#66727A' },
 }
 const AVATAR_PALETTE = ['#1B4F8C', '#5C3280', '#1B7A5E', '#7A4B1B', '#4A6E1B', '#1B5C7A']
+const MAPBOX_TOKEN   = import.meta.env.VITE_MAPBOX_TOKEN
+const PLACE_COLORS   = ['#2563eb', '#37C2B8', '#E0A63C', '#F2495B', '#7B8FBD', '#5C3280']
 
 /* ── helpers ──────────────────────────────────────────────────── */
 function avatarColor(id) {
@@ -47,11 +53,49 @@ function resolveUnits(account, unitIds) {
   return unitIds.map(id => account.units.find(u => u.id === id)).filter(Boolean)
 }
 
+/* ── Mapbox Places helpers ────────────────────────────────────── */
+function makeCircleGeoJSON(lng, lat, radiusMeters) {
+  const R      = 6371000
+  const coords = Array.from({ length: 64 }, (_, i) => {
+    const angle = (i / 64) * 2 * Math.PI
+    const dx    = radiusMeters * Math.cos(angle)
+    const dy    = radiusMeters * Math.sin(angle)
+    return [
+      lng + (dx / R) * (180 / Math.PI) / Math.cos(lat * Math.PI / 180),
+      lat + (dy / R) * (180 / Math.PI),
+    ]
+  })
+  coords.push(coords[0])
+  return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} }
+}
+
+async function searchMapbox(q, sessionToken) {
+  const url  = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}&access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}&limit=5&language=en`
+  const res  = await fetch(url)
+  const data = await res.json()
+  return data.suggestions ?? []
+}
+
+async function retrieveMapbox(mapboxId, sessionToken) {
+  const url  = `https://api.mapbox.com/search/searchbox/v1/retrieve/${mapboxId}?access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}`
+  const res  = await fetch(url)
+  const data = await res.json()
+  const feat = data.features?.[0]
+  if (!feat) return null
+  return {
+    name:      feat.properties.name,
+    address:   feat.properties.full_address ?? feat.properties.place_formatted ?? feat.properties.name,
+    mapboxId:  feat.properties.mapbox_id,
+    latitude:  feat.properties.coordinates.latitude,
+    longitude: feat.properties.coordinates.longitude,
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    SHARED — Panel, Field, ConfirmBar, AccountForm, NameForm
 ═══════════════════════════════════════════════════════════════ */
 
-function Panel({ title, onClose, children }) {
+function Panel({ title, onClose, children, wide }) {
   useEffect(() => {
     const h = e => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
@@ -59,7 +103,7 @@ function Panel({ title, onClose, children }) {
   }, [onClose])
   return (
     <div className="ac-panel-backdrop" onClick={onClose}>
-      <aside className="ac-panel" onClick={e => e.stopPropagation()}>
+      <aside className={`ac-panel${wide ? ' ac-panel--wide' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="ac-panel__head">
           <span className="ac-panel__title">{title}</span>
           <button className="ac-panel__x" onClick={onClose}>×</button>
@@ -160,6 +204,97 @@ function NameForm({ label, initial, placeholder, onSave, onCancel }) {
   )
 }
 
+/* ── Assign User section (inside person edit only) ───────────── */
+function AssignUserSection({ principalId, accountId, currentUserId, currentUserEmail, currentUserName, onUserAssigned }) {
+  const [email,     setEmail]     = useState('')
+  const [phase,     setPhase]     = useState('idle') // idle | loading | found | error
+  const [foundUser, setFoundUser] = useState(null)
+  const [errorMsg,  setErrorMsg]  = useState('')
+  const [removing,  setRemoving]  = useState(false)
+
+  async function handleLookup() {
+    if (!email.trim()) return
+    setPhase('loading')
+    setFoundUser(null)
+    setErrorMsg('')
+    try {
+      const res = await apiFetch(apiUrl(`/api/users/by-email?email=${encodeURIComponent(email.trim())}`))
+      if (res.status === 404) { setPhase('error'); setErrorMsg('No user found with this email address.'); return }
+      const user = await res.json()
+      setFoundUser(user)
+      setPhase('found')
+    } catch { setPhase('error'); setErrorMsg('Lookup failed — try again.') }
+  }
+
+  async function handleAssign() {
+    const res = await apiFetch(apiUrl(`/api/accounts/${accountId}/principals/${principalId}`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: foundUser.id }),
+    })
+    if (res.status === 409) { setPhase('error'); setErrorMsg('This user is already linked to another principal.'); return }
+    onUserAssigned({ userId: foundUser.id, userEmail: foundUser.email, userName: foundUser.name })
+    setEmail(''); setPhase('idle'); setFoundUser(null)
+  }
+
+  async function handleRemove() {
+    setRemoving(true)
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/principals/${principalId}`), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: null }),
+    })
+    onUserAssigned({ userId: null, userEmail: null, userName: null })
+    setRemoving(false)
+  }
+
+  return (
+    <div className="ac-user-assign">
+      {currentUserId ? (
+        <div className="ac-user-assign__assigned">
+          <div className="ac-user-assign__info">
+            <span className="ac-user-assign__name">{currentUserName ?? currentUserEmail ?? '—'}</span>
+            {currentUserEmail && <span className="ac-user-assign__email">{currentUserEmail}</span>}
+          </div>
+          <button className="ac-btn ac-btn--danger-ghost ac-btn--sm" onClick={handleRemove} disabled={removing}>
+            {removing ? 'Removing…' : 'Remove'}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="ac-user-assign__input-row">
+            <input
+              className="ac-input ac-input--flex"
+              type="email"
+              placeholder="user@example.com"
+              value={email}
+              onChange={e => { setEmail(e.target.value); if (phase !== 'idle') { setPhase('idle'); setFoundUser(null) } }}
+              onKeyDown={e => { if (e.key === 'Enter') handleLookup() }}
+              disabled={phase === 'loading'}
+            />
+            <button
+              className="ac-btn ac-btn--ghost ac-btn--sm"
+              onClick={handleLookup}
+              disabled={!email.trim() || phase === 'loading'}
+            >
+              {phase === 'loading' ? 'Looking up…' : 'Look up'}
+            </button>
+          </div>
+          {phase === 'found' && foundUser && (
+            <div className="ac-user-assign__confirm">
+              <span className="ac-user-assign__found-label">Found:</span>
+              <span className="ac-user-assign__found-name">{foundUser.name}</span>
+              <div className="ac-user-assign__confirm-actions">
+                <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => { setPhase('idle'); setFoundUser(null) }}>Cancel</button>
+                <button className="ac-btn ac-btn--primary ac-btn--sm" onClick={handleAssign}>Assign</button>
+              </div>
+            </div>
+          )}
+          {phase === 'error' && <span className="ac-user-assign__error">{errorMsg}</span>}
+        </>
+      )}
+    </div>
+  )
+}
+
 /* ── Unit form (person or vehicle) ───────────────────────────── */
 const BLOOD_GROUPS = ['', 'A+', 'A−', 'B+', 'B−', 'AB+', 'AB−', 'O+', 'O−']
 const EMERG_EMPTY  = { dob: '', height: '', bloodGroup: '', allergies: '', conditions: '', medications: '', contactName: '', contactPhone: '', contactRelation: '' }
@@ -171,7 +306,7 @@ function emergSummary(e) {
   return { bloodGroup: e.bloodGroup, count: filled }
 }
 
-function UnitForm({ initial, onSave, onCancel }) {
+function UnitForm({ initial, accountId, onSave, onCancel, onUserAssigned }) {
   const [type, setType] = useState(initial?.type ?? 'person')
   const PERSON_EMPTY  = { name: '', role: '', phone: '', email: '', status: 'normal', emergency: { ...EMERG_EMPTY } }
   const VEHICLE_EMPTY = { name: '', make: '', model: '', plate: '', armorLevel: 'Soft skin', status: 'normal' }
@@ -283,6 +418,21 @@ function UnitForm({ initial, onSave, onCancel }) {
                 </Field>
               </div>
             </div>
+          )}
+
+          {/* ── app user link ──────────────────────────────────── */}
+          {isEdit && accountId && onUserAssigned && (
+            <>
+              <div className="ac-panel__divider">APP USER</div>
+              <AssignUserSection
+                principalId={initial.id}
+                accountId={accountId}
+                currentUserId={initial.userId ?? null}
+                currentUserEmail={initial.userEmail ?? null}
+                currentUserName={initial.userName ?? null}
+                onUserAssigned={onUserAssigned}
+              />
+            </>
           )}
         </>
       ) : (
@@ -590,13 +740,14 @@ function DevicesPanel({ unit, accountId, onClose }) {
   )
 }
 
-/* ── Unit edit panel — DETAILS + DEVICES tabs ─────────────────── */
-function UnitEditPanel({ unit, accountId, onSave, onCancel }) {
+/* ── Unit edit panel — DETAILS + DEVICES + TRIGGERS tabs ─────── */
+function UnitEditPanel({ unit, accountId, onSave, onCancel, onUserAssigned }) {
   const [tab, setTab] = useState('details')
 
   const TABS = [
-    { id: 'details', label: 'DETAILS' },
-    { id: 'devices', label: 'DEVICES' },
+    { id: 'details',  label: 'DETAILS'  },
+    { id: 'devices',  label: 'DEVICES'  },
+    { id: 'triggers', label: 'TRIGGERS' },
   ]
 
   return (
@@ -614,10 +765,19 @@ function UnitEditPanel({ unit, accountId, onSave, onCancel }) {
       </div>
 
       {tab === 'details' && (
-        <UnitForm initial={unit} onSave={onSave} onCancel={onCancel} />
+        <UnitForm
+          initial={unit}
+          accountId={accountId}
+          onSave={onSave}
+          onCancel={onCancel}
+          onUserAssigned={unit.type === 'person' ? onUserAssigned : undefined}
+        />
       )}
       {tab === 'devices' && (
         <DeviceManager unit={unit} accountId={accountId} />
+      )}
+      {tab === 'triggers' && (
+        <UnitTriggers unit={unit} />
       )}
     </>
   )
@@ -812,10 +972,793 @@ function RosterCard({ unit, accountId, confirmDelete, setConfirmDelete, setPanel
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   PLACES — PlaceForm, PlaceCard, PlacesSection
+═══════════════════════════════════════════════════════════════ */
+
+function PlaceForm({ initial, onSave, onCancel }) {
+  const [sessionToken] = useState(() => crypto.randomUUID())
+  const debounceRef    = useRef(null)
+
+  const [query,       setQuery]       = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [resolved,    setResolved]    = useState(initial ? {
+    latitude:  initial.latitude,  longitude: initial.longitude,
+    name:      initial.name,      address:   initial.address,
+    mapboxId:  initial.mapboxId,
+  } : null)
+  const [name,   setName]   = useState(initial?.name   ?? '')
+  const [radius, setRadius] = useState(initial?.radius ?? 150)
+  const [color,  setColor]  = useState(initial?.color  ?? PLACE_COLORS[0])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => () => clearTimeout(debounceRef.current), [])
+
+  function handleQueryChange(q) {
+    setQuery(q)
+    clearTimeout(debounceRef.current)
+    if (!q.trim()) { setSuggestions([]); return }
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchMapbox(q, sessionToken)
+      setSuggestions(results)
+    }, 300)
+  }
+
+  async function handleSelect(suggestion) {
+    setSuggestions([])
+    setQuery('')
+    const place = await retrieveMapbox(suggestion.mapbox_id, sessionToken)
+    if (!place) return
+    setResolved(place)
+    if (!name || name === resolved?.name) setName(place.name)
+  }
+
+  const valid  = resolved && name.trim()
+  const circle = resolved ? makeCircleGeoJSON(resolved.longitude, resolved.latitude, radius) : null
+
+  async function handleSave() {
+    if (!valid || saving) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(), address: resolved.address, mapboxId: resolved.mapboxId,
+        latitude: resolved.latitude, longitude: resolved.longitude, radius, color,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Field label="SEARCH LOCATION">
+        <div className="ac-place-search">
+          <input
+            className="ac-input"
+            placeholder="Search by name or address…"
+            value={query}
+            onChange={e => handleQueryChange(e.target.value)}
+            onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+            autoComplete="off"
+          />
+          {suggestions.length > 0 && (
+            <div className="ac-place-suggestions">
+              {suggestions.map(s => (
+                <button
+                  key={s.mapbox_id}
+                  className="ac-place-suggestion"
+                  onMouseDown={e => { e.preventDefault(); handleSelect(s) }}
+                >
+                  <span className="ac-place-suggestion__name">{s.name}</span>
+                  <span className="ac-place-suggestion__sub">{s.place_formatted}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {resolved && <span className="ac-place-resolved">✓ {resolved.address ?? resolved.name}</span>}
+      </Field>
+
+      {resolved && circle && (
+        <div className="ac-place-map-preview">
+          <Map
+            key={`${resolved.longitude},${resolved.latitude}`}
+            mapboxAccessToken={MAPBOX_TOKEN}
+            initialViewState={{ longitude: resolved.longitude, latitude: resolved.latitude, zoom: 15 }}
+            mapStyle="mapbox://styles/mapbox/dark-v11"
+            style={{ width: '100%', height: '100%' }}
+          >
+            <Marker longitude={resolved.longitude} latitude={resolved.latitude} anchor="center">
+              <div className="ac-place-marker" style={{ background: color }} />
+            </Marker>
+            <Source id="place-circle" type="geojson" data={circle}>
+              <Layer id="place-circle-fill"    type="fill" paint={{ 'fill-color': color, 'fill-opacity': 0.15 }} />
+              <Layer id="place-circle-outline" type="line" paint={{ 'line-color': color, 'line-width': 2 }} />
+            </Source>
+          </Map>
+        </div>
+      )}
+
+      <Field label="PLACE NAME *">
+        <input
+          className="ac-input"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. School, Home, Office"
+        />
+      </Field>
+
+      <Field label={`GEOFENCE RADIUS — ${radius}m`}>
+        <input
+          type="range" className="ac-range"
+          min={50} max={1000} step={25}
+          value={radius}
+          onChange={e => setRadius(Number(e.target.value))}
+        />
+      </Field>
+
+      <Field label="COLOR">
+        <div className="ac-place-colors">
+          {PLACE_COLORS.map(c => (
+            <button
+              key={c} type="button"
+              className={`ac-place-color-swatch${color === c ? ' is-active' : ''}`}
+              style={{ background: c }}
+              onClick={() => setColor(c)}
+            />
+          ))}
+        </div>
+      </Field>
+
+      <div className="ac-form-actions">
+        <button className="ac-btn ac-btn--ghost" onClick={onCancel}>Cancel</button>
+        <button className="ac-btn ac-btn--primary" disabled={!valid || saving} onClick={handleSave}>
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Place'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+function PlaceCard({ place, onEdit, onDelete }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  return (
+    <div className="ac-place-card">
+      <div className="ac-place-card__header">
+        <div className="ac-place-card__dot" style={{ background: place.color }} />
+        <span className="ac-place-card__name">{place.name}</span>
+        <div className="ac-place-card__actions">
+          <button className="ac-icon-btn" title="Edit" onClick={onEdit}><EditIcon /></button>
+          <button className="ac-icon-btn ac-icon-btn--danger" title="Delete" onClick={() => setConfirmDelete(true)}><TrashIcon /></button>
+        </div>
+      </div>
+      {place.address && <span className="ac-place-card__address">{place.address}</span>}
+      <span className="ac-place-card__radius">{place.radius}m radius</span>
+      {confirmDelete && (
+        <ConfirmBar
+          message={`Delete "${place.name}"?`}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlacesSection({ accountId, panelMode, onPanelChange }) {
+  const [places, setPlaces] = useState([])
+
+  useEffect(() => {
+    apiFetch(apiUrl(`/api/accounts/${accountId}/places`))
+      .then(r => r.json())
+      .then(data => setPlaces(Array.isArray(data) ? data : []))
+  }, [accountId])
+
+  async function handleSave(data) {
+    if (panelMode === 'add') {
+      const res   = await apiFetch(apiUrl(`/api/accounts/${accountId}/places`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const place = await res.json()
+      setPlaces(p => [...p, place])
+    } else {
+      const res   = await apiFetch(apiUrl(`/api/accounts/${accountId}/places/${panelMode.place.id}`), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const place = await res.json()
+      setPlaces(p => p.map(x => x.id === place.id ? place : x))
+    }
+    onPanelChange(null)
+  }
+
+  async function handleDelete(placeId) {
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/places/${placeId}`), { method: 'DELETE' })
+    setPlaces(p => p.filter(x => x.id !== placeId))
+  }
+
+  return (
+    <>
+      <section className="ac-section">
+        <div className="ac-section__head">
+          <span className="ac-section__label">PLACES <span className="ac-section__count">{places.length}</span></span>
+        </div>
+        {places.length === 0 ? (
+          <div className="ac-empty ac-empty--inline">
+            <span className="ac-empty__text">No places yet — add named locations to use in plans</span>
+          </div>
+        ) : (
+          <div className="ac-grid ac-grid--places">
+            {places.map(place => (
+              <PlaceCard
+                key={place.id}
+                place={place}
+                onEdit={() => onPanelChange({ place })}
+                onDelete={() => handleDelete(place.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {panelMode && (
+        <Panel
+          title={panelMode === 'add' ? 'Add Place' : 'Edit Place'}
+          onClose={() => onPanelChange(null)}
+        >
+          <PlaceForm
+            initial={panelMode === 'add' ? undefined : panelMode.place}
+            onSave={handleSave}
+            onCancel={() => onPanelChange(null)}
+          />
+        </Panel>
+      )}
+    </>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANS — PlanForm, PlanCard, PlansSection
+═══════════════════════════════════════════════════════════════ */
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/* ── MiniPlaceForm — inline "save as place" after picking from map ─ */
+function MiniPlaceForm({ resolved, onSave, onCancel }) {
+  const [name,   setName]   = useState(resolved.name ?? '')
+  const [radius, setRadius] = useState(150)
+  const [color,  setColor]  = useState(PLACE_COLORS[0])
+  const [saving, setSaving] = useState(false)
+  const circle = makeCircleGeoJSON(resolved.longitude, resolved.latitude, radius)
+
+  async function handleSave() {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(), address: resolved.address, mapboxId: resolved.mapboxId,
+        latitude: resolved.latitude, longitude: resolved.longitude, radius, color,
+      })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="ac-loc-adding">
+      <div className="ac-place-map-preview" style={{ height: 130 }}>
+        <Map
+          key={`mini-${resolved.longitude},${resolved.latitude}`}
+          mapboxAccessToken={MAPBOX_TOKEN}
+          initialViewState={{ longitude: resolved.longitude, latitude: resolved.latitude, zoom: 14 }}
+          mapStyle="mapbox://styles/mapbox/dark-v11"
+          style={{ width: '100%', height: '100%' }}
+        >
+          <Marker longitude={resolved.longitude} latitude={resolved.latitude} anchor="center">
+            <div className="ac-place-marker" style={{ background: color }} />
+          </Marker>
+          <Source id="mini-circle" type="geojson" data={circle}>
+            <Layer id="mini-circle-fill"    type="fill" paint={{ 'fill-color': color, 'fill-opacity': 0.15 }} />
+            <Layer id="mini-circle-outline" type="line" paint={{ 'line-color': color, 'line-width': 2 }} />
+          </Source>
+        </Map>
+      </div>
+      <Field label="PLACE NAME *">
+        <input className="ac-input" value={name} onChange={e => setName(e.target.value)} autoFocus />
+      </Field>
+      <Field label={`RADIUS — ${radius}m`}>
+        <input type="range" className="ac-range" min={50} max={1000} step={25}
+          value={radius} onChange={e => setRadius(Number(e.target.value))} />
+      </Field>
+      <Field label="COLOR">
+        <div className="ac-place-colors">
+          {PLACE_COLORS.map(c => (
+            <button key={c} type="button"
+              className={`ac-place-color-swatch${color === c ? ' is-active' : ''}`}
+              style={{ background: c }} onClick={() => setColor(c)} />
+          ))}
+        </div>
+      </Field>
+      <div className="ac-loc-adding__actions">
+        <button type="button" className="ac-btn ac-btn--ghost ac-btn--sm" onClick={onCancel}>← Back</button>
+        <button type="button" className="ac-btn ac-btn--primary" disabled={!name.trim() || saving} onClick={handleSave}>
+          {saving ? 'Saving…' : 'Save Place'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ── LocationPicker — saved places → Mapbox → inline create ─────── */
+function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) {
+  const [sessionToken] = useState(() => crypto.randomUUID())
+  const debounceRef    = useRef(null)
+  const [query,       setQuery]      = useState('')
+  const [mapboxSuggs, setMapboxSuggs] = useState([])
+  const [dropOpen,    setDropOpen]   = useState(false)
+  const [addingNew,   setAddingNew]  = useState(null)
+
+  useEffect(() => () => clearTimeout(debounceRef.current), [])
+
+  const selectedPlace   = value ? places.find(p => p.id === value) : null
+  const matchingPlaces  = places.filter(p =>
+    !query.trim() || p.name.toLowerCase().includes(query.toLowerCase())
+  )
+
+  function handleQueryChange(q) {
+    setQuery(q)
+    clearTimeout(debounceRef.current)
+    setMapboxSuggs([])
+    if (!q.trim()) return
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchMapbox(q, sessionToken)
+      setMapboxSuggs(results)
+    }, 350)
+  }
+
+  function handleSelectPlace(place) {
+    onChange(place.id)
+    setQuery('')
+    setDropOpen(false)
+    setMapboxSuggs([])
+  }
+
+  async function handleSelectMapbox(suggestion) {
+    const resolved = await retrieveMapbox(suggestion.mapbox_id, sessionToken)
+    if (!resolved) return
+    setDropOpen(false)
+    setQuery('')
+    setMapboxSuggs([])
+    setAddingNew(resolved)
+  }
+
+  async function handleSaveNew(data) {
+    const res   = await apiFetch(apiUrl(`/api/accounts/${accountId}/places`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    const place = await res.json()
+    onPlaceCreated(place)
+    onChange(place.id)
+    setAddingNew(null)
+  }
+
+  if (addingNew) {
+    return <MiniPlaceForm resolved={addingNew} onSave={handleSaveNew} onCancel={() => setAddingNew(null)} />
+  }
+
+  if (selectedPlace) {
+    return (
+      <div className="ac-loc-selected">
+        <div className="ac-loc-selected__dot" style={{ background: selectedPlace.color }} />
+        <span className="ac-loc-selected__name">{selectedPlace.name}</span>
+        <button type="button" className="ac-loc-selected__clear" onClick={() => onChange(null)}>×</button>
+      </div>
+    )
+  }
+
+  const showDrop = dropOpen && (matchingPlaces.length > 0 || mapboxSuggs.length > 0)
+
+  return (
+    <div className="ac-loc-search">
+      <input
+        className="ac-input"
+        placeholder="Search saved places or map…"
+        value={query}
+        onChange={e => handleQueryChange(e.target.value)}
+        onFocus={() => setDropOpen(true)}
+        onBlur={() => setTimeout(() => setDropOpen(false), 150)}
+        autoComplete="off"
+      />
+      {showDrop && (
+        <div className="ac-loc-dropdown">
+          {matchingPlaces.length > 0 && (
+            <>
+              <div className="ac-loc-dropdown__section">SAVED PLACES</div>
+              {matchingPlaces.map(p => (
+                <button key={p.id} className="ac-loc-result" onMouseDown={e => { e.preventDefault(); handleSelectPlace(p) }}>
+                  <div className="ac-loc-result__dot" style={{ background: p.color }} />
+                  <div className="ac-loc-result__text">
+                    <span className="ac-loc-result__name">{p.name}</span>
+                    {p.address && <span className="ac-loc-result__addr">{p.address}</span>}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+          {mapboxSuggs.length > 0 && (
+            <>
+              <div className="ac-loc-dropdown__section">FROM MAP — saves as a new place</div>
+              {mapboxSuggs.map(s => (
+                <button key={s.mapbox_id} className="ac-loc-result ac-loc-result--map" onMouseDown={e => { e.preventDefault(); handleSelectMapbox(s) }}>
+                  <div className="ac-loc-result__text">
+                    <span className="ac-loc-result__name">{s.name}</span>
+                    <span className="ac-loc-result__addr">{s.place_formatted}</span>
+                  </div>
+                  <span className="ac-loc-result__badge">+ New</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function emptyLeg(type) {
+  return type === 'recurring'
+    ? { originPlaceId: null, destinationPlaceId: null, daysOfWeek: [1, 2, 3, 4, 5], windowStart: '', windowEnd: '' }
+    : { originPlaceId: null, destinationPlaceId: null, arrivalAt: '', departureAt: '' }
+}
+
+function PlanForm({ initial, accountId, units, onSave, onCancel }) {
+  const [places,        setPlaces]        = useState([])
+  const [name,          setName]          = useState(initial?.name  ?? '')
+  const [type,          setType]          = useState(initial?.type  ?? 'recurring')
+  const [notes,         setNotes]         = useState(initial?.notes ?? '')
+  const [legs,          setLegs]          = useState(initial?.legs?.length > 0 ? initial.legs : [emptyLeg(initial?.type ?? 'recurring')])
+  const [selectedUnits, setSelectedUnits] = useState(initial?.units?.map(u => u.unitId) ?? [])
+  const [unitQuery,     setUnitQuery]     = useState('')
+  const [unitDropOpen,  setUnitDropOpen]  = useState(false)
+  const [saving,        setSaving]        = useState(false)
+
+  useEffect(() => {
+    apiFetch(apiUrl(`/api/accounts/${accountId}/places`))
+      .then(r => r.json())
+      .then(data => setPlaces(Array.isArray(data) ? data : []))
+  }, [accountId])
+
+  function toggleUnit(id) {
+    setSelectedUnits(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function handleTypeChange(t) {
+    setType(t)
+    setLegs(ls => ls.map(() => emptyLeg(t)))
+  }
+
+  function updateLeg(i, patch) {
+    setLegs(ls => ls.map((l, idx) => idx === i ? { ...l, ...patch } : l))
+  }
+
+  function toggleDay(legIdx, day) {
+    setLegs(ls => ls.map((l, i) => {
+      if (i !== legIdx) return l
+      const days = l.daysOfWeek ?? []
+      const next = days.includes(day) ? days.filter(d => d !== day) : [...days, day].sort((a, b) => a - b)
+      return { ...l, daysOfWeek: next }
+    }))
+  }
+
+  const filteredUnits = units.filter(u =>
+    !unitQuery.trim() || u.name.toLowerCase().includes(unitQuery.toLowerCase())
+  )
+
+  const valid = name.trim() && legs.length > 0 && selectedUnits.length > 0
+
+  async function handleSave() {
+    if (!valid || saving) return
+    setSaving(true)
+    try {
+      await onSave({
+        name:    name.trim(),
+        type,
+        enabled: initial?.enabled !== false,
+        notes:   notes || null,
+        legs:    legs.map((l, i) => ({ ...l, legOrder: i })),
+        units:   selectedUnits.map(id => {
+          const u = units.find(x => x.id === id)
+          return { unitId: id, unitType: u?.type === 'vehicle' ? 'vehicle' : 'principal' }
+        }),
+      })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <>
+      <Field label="PLAN NAME *">
+        <input className="ac-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. School Run, Morning Commute" />
+      </Field>
+
+      <Field label="TYPE">
+        <div className="ac-plan-type-toggle">
+          <button type="button" className={`ac-plan-type-btn${type === 'recurring' ? ' is-active' : ''}`} onClick={() => handleTypeChange('recurring')}>Recurring</button>
+          <button type="button" className={`ac-plan-type-btn${type === 'one_time'  ? ' is-active' : ''}`} onClick={() => handleTypeChange('one_time')}>One-time</button>
+        </div>
+      </Field>
+
+      <Field label="NOTES">
+        <input className="ac-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+      </Field>
+
+      <div className="ac-plan-legs-header">
+        <span className="ac-field__label">LEGS</span>
+        <button type="button" className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setLegs(ls => [...ls, emptyLeg(type)])}>+ Add leg</button>
+      </div>
+
+      {legs.map((leg, i) => (
+        <div key={i} className="ac-plan-leg">
+          <div className="ac-plan-leg__head">
+            <span className="ac-plan-leg__num">Leg {i + 1}</span>
+            {legs.length > 1 && (
+              <button type="button" className="ac-icon-btn ac-icon-btn--danger" onClick={() => setLegs(ls => ls.filter((_, idx) => idx !== i))}>
+                <TrashIcon />
+              </button>
+            )}
+          </div>
+
+          <div className="ac-plan-leg__places">
+            <Field label="FROM">
+              <LocationPicker
+                value={leg.originPlaceId}
+                onChange={v => updateLeg(i, { originPlaceId: v })}
+                places={places}
+                accountId={accountId}
+                onPlaceCreated={place => setPlaces(p => [...p, place])}
+              />
+            </Field>
+            <Field label="TO">
+              <LocationPicker
+                value={leg.destinationPlaceId}
+                onChange={v => updateLeg(i, { destinationPlaceId: v })}
+                places={places}
+                accountId={accountId}
+                onPlaceCreated={place => setPlaces(p => [...p, place])}
+              />
+            </Field>
+          </div>
+
+          {type === 'recurring' ? (
+            <>
+              <Field label="DAYS">
+                <div className="ac-plan-days">
+                  {DAY_LABELS.map((label, day) => (
+                    <button
+                      key={day} type="button"
+                      className={`ac-plan-day-btn${(leg.daysOfWeek ?? []).includes(day) ? ' is-active' : ''}`}
+                      onClick={() => toggleDay(i, day)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <div className="ac-plan-leg__time-row">
+                <Field label="WINDOW START">
+                  <input type="time" className="ac-input" value={leg.windowStart ?? ''} onChange={e => updateLeg(i, { windowStart: e.target.value })} />
+                </Field>
+                <Field label="WINDOW END">
+                  <input type="time" className="ac-input" value={leg.windowEnd ?? ''} onChange={e => updateLeg(i, { windowEnd: e.target.value })} />
+                </Field>
+              </div>
+            </>
+          ) : (
+            <div className="ac-plan-leg__time-row">
+              <Field label="ARRIVAL">
+                <input type="datetime-local" className="ac-input"
+                  value={leg.arrivalAt ? leg.arrivalAt.slice(0, 16) : ''}
+                  onChange={e => updateLeg(i, { arrivalAt: e.target.value ? new Date(e.target.value).toISOString() : '' })}
+                />
+              </Field>
+              <Field label="DEPARTURE">
+                <input type="datetime-local" className="ac-input"
+                  value={leg.departureAt ? leg.departureAt.slice(0, 16) : ''}
+                  onChange={e => updateLeg(i, { departureAt: e.target.value ? new Date(e.target.value).toISOString() : '' })}
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="ac-plan-section-divider" />
+
+      <Field label={`ASSIGN UNITS${selectedUnits.length > 0 ? ` — ${selectedUnits.length} selected` : ''}`}>
+        {selectedUnits.length > 0 && (
+          <div className="ac-plan-unit-chips">
+            {selectedUnits.map(id => {
+              const u = units.find(x => x.id === id)
+              return (
+                <span key={id} className="ac-plan-unit-chip">
+                  {u?.name ?? id}
+                  <button type="button" onClick={() => toggleUnit(id)}>×</button>
+                </span>
+              )
+            })}
+          </div>
+        )}
+        <div className="ac-plan-unit-search">
+          <input
+            className="ac-input"
+            placeholder="Search units…"
+            value={unitQuery}
+            onChange={e => setUnitQuery(e.target.value)}
+            onFocus={() => setUnitDropOpen(true)}
+            onBlur={() => setTimeout(() => setUnitDropOpen(false), 150)}
+            autoComplete="off"
+          />
+          {unitDropOpen && filteredUnits.length > 0 && (
+            <div className="ac-plan-unit-results">
+              {filteredUnits.map(u => {
+                const selected = selectedUnits.includes(u.id)
+                return (
+                  <button
+                    key={u.id} type="button"
+                    className={`ac-plan-unit-result${selected ? ' is-selected' : ''}`}
+                    onMouseDown={e => { e.preventDefault(); toggleUnit(u.id) }}
+                  >
+                    <span className="ac-plan-unit-result__name">{u.name}</span>
+                    <span className="ac-plan-unit-result__type">{u.type === 'vehicle' ? 'Vehicle' : 'Person'}</span>
+                    {selected && <span className="ac-plan-unit-result__check">✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Field>
+
+      <div className="ac-form-actions">
+        <button className="ac-btn ac-btn--ghost" onClick={onCancel}>Cancel</button>
+        <button className="ac-btn ac-btn--primary" disabled={!valid || saving} onClick={handleSave}>
+          {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Plan'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+function PlanCard({ plan, units, onEdit, onDelete }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const planUnitNames = (plan.units ?? [])
+    .map(pu => units.find(u => u.id === pu.unitId)?.name)
+    .filter(Boolean)
+  const firstLeg  = plan.legs?.[0]
+  const isRecurr  = plan.type === 'recurring'
+  const dayShorts = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+  const daysLabel = isRecurr && firstLeg?.daysOfWeek?.length > 0
+    ? firstLeg.daysOfWeek.map(d => dayShorts[d]).join(' ')
+    : null
+
+  return (
+    <div className={`ac-plan-card${!plan.enabled ? ' is-disabled' : ''}`}>
+      <div className="ac-plan-card__header">
+        <div className="ac-plan-card__title-col">
+          <span className="ac-plan-card__name">{plan.name}</span>
+          {planUnitNames.length > 0 && (
+            <span className="ac-plan-card__unit">
+              {planUnitNames.length <= 2
+                ? planUnitNames.join(', ')
+                : `${planUnitNames.slice(0, 2).join(', ')} +${planUnitNames.length - 2}`}
+            </span>
+          )}
+        </div>
+        <div className="ac-plan-card__actions">
+          <button className="ac-icon-btn" title="Edit" onClick={onEdit}><EditIcon /></button>
+          <button className="ac-icon-btn ac-icon-btn--danger" title="Delete" onClick={() => setConfirmDelete(true)}><TrashIcon /></button>
+        </div>
+      </div>
+      <div className="ac-plan-card__meta">
+        <span className={`ac-chip ac-chip--sm ac-plan-chip--${isRecurr ? 'recurring' : 'onetime'}`}>
+          {isRecurr ? 'RECURRING' : 'ONE-TIME'}
+        </span>
+        {daysLabel && <span className="ac-plan-card__days">{daysLabel}</span>}
+        {firstLeg?.windowStart && <span className="ac-plan-card__time">{firstLeg.windowStart}–{firstLeg.windowEnd}</span>}
+        {plan.legs?.length > 1 && <span className="ac-plan-card__legs">{plan.legs.length} legs</span>}
+        {!plan.enabled && <span className="ac-plan-card__off">OFF</span>}
+      </div>
+      {confirmDelete && (
+        <ConfirmBar
+          message={`Delete "${plan.name}"?`}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlansSection({ accountId, units, panelMode, onPanelChange }) {
+  const [plans, setPlans] = useState([])
+
+  useEffect(() => {
+    apiFetch(apiUrl(`/api/accounts/${accountId}/plans`))
+      .then(r => r.json())
+      .then(data => setPlans(Array.isArray(data) ? data : []))
+  }, [accountId])
+
+  async function handleSave(data) {
+    if (panelMode === 'add') {
+      const res  = await apiFetch(apiUrl(`/api/accounts/${accountId}/plans`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const plan = await res.json()
+      setPlans(p => [...p, plan])
+    } else {
+      const res  = await apiFetch(apiUrl(`/api/accounts/${accountId}/plans/${panelMode.plan.id}`), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const plan = await res.json()
+      setPlans(p => p.map(x => x.id === plan.id ? plan : x))
+    }
+    onPanelChange(null)
+  }
+
+  async function handleDelete(planId) {
+    await apiFetch(apiUrl(`/api/accounts/${accountId}/plans/${planId}`), { method: 'DELETE' })
+    setPlans(p => p.filter(x => x.id !== planId))
+  }
+
+  return (
+    <>
+      <section className="ac-section">
+        <div className="ac-section__head">
+          <span className="ac-section__label">PLANS <span className="ac-section__count">{plans.length}</span></span>
+        </div>
+        {plans.length === 0 ? (
+          <div className="ac-empty ac-empty--inline">
+            <span className="ac-empty__text">No plans yet — add schedules or trips for units to follow</span>
+          </div>
+        ) : (
+          <div className="ac-grid ac-grid--plans">
+            {plans.map(plan => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                units={units}
+                onEdit={() => onPanelChange({ plan })}
+                onDelete={() => handleDelete(plan.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {panelMode && (
+        <Panel
+          title={panelMode === 'add' ? 'Add Plan' : 'Edit Plan'}
+          onClose={() => onPanelChange(null)}
+          wide
+        >
+          <PlanForm
+            initial={panelMode === 'add' ? undefined : panelMode.plan}
+            accountId={accountId}
+            units={units}
+            onSave={handleSave}
+            onCancel={() => onPanelChange(null)}
+          />
+        </Panel>
+      )}
+    </>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
    PAGE 2 — Account Detail  (roster + groups)
 ═══════════════════════════════════════════════════════════════ */
 export function AccountDetail() {
-  const { accounts, updateAccount, deleteAccount, createUnit, updateUnit, deleteUnit, createGroup } = useAccounts()
+  const { accounts, updateAccount, deleteAccount, createUnit, updateUnit, deleteUnit, setUnitUser, createGroup } = useAccounts()
   const { accountId } = useParams()
   const navigate      = useNavigate()
   const account       = accounts.find(a => a.id === accountId)
@@ -823,6 +1766,8 @@ export function AccountDetail() {
   const [panel,         setPanel]         = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)    // 'account' | unitId
   const [deviceUnitId,  setDeviceUnitId]  = useState(null)
+  const [placePanel,    setPlacePanel]    = useState(null)    // null | 'add' | { place }
+  const [planPanel,     setPlanPanel]     = useState(null)    // null | 'add' | { plan }
 
   if (!account) return <NotFound label="Account not found" />
 
@@ -837,7 +1782,7 @@ export function AccountDetail() {
   const peopleUnits   = account.units.filter(u => u.type === 'person')
   const vehicleUnits  = account.units.filter(u => u.type === 'vehicle')
 
-  function handleSaveUnit(data) {
+  function handleSaveUnit({ userId, userEmail, userName, ...data }) {
     if (panel.mode === 'addUnit') {
       createUnit(accountId, data)
     } else {
@@ -859,6 +1804,12 @@ export function AccountDetail() {
           </button>
           <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'createGroup' })}>
             + Group
+          </button>
+          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPlacePanel('add')}>
+            + Place
+          </button>
+          <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPlanPanel('add')}>
+            + Plan
           </button>
           <div className="ac-top-bar__divider" />
           <button className="ac-btn ac-btn--ghost ac-btn--sm" onClick={() => setPanel({ mode: 'editAccount' })}>
@@ -1002,6 +1953,12 @@ export function AccountDetail() {
         )}
       </section>
 
+      {/* places */}
+      <PlacesSection accountId={accountId} panelMode={placePanel} onPanelChange={setPlacePanel} />
+
+      {/* plans */}
+      <PlansSection accountId={accountId} units={account.units} panelMode={planPanel} onPanelChange={setPlanPanel} />
+
       {/* panels */}
       {panel?.mode === 'editAccount' && (
         <Panel title="Edit Account" onClose={() => setPanel(null)}>
@@ -1032,6 +1989,7 @@ export function AccountDetail() {
               accountId={accountId}
               onSave={handleSaveUnit}
               onCancel={() => setPanel(null)}
+              onUserAssigned={userData => setUnitUser(accountId, liveUnit.id, userData)}
             />
           </Panel>
         )

@@ -19,7 +19,7 @@ export const principals = pgTable('principals', {
   id:              uuid('id').primaryKey().defaultRandom(),
   accountId:       uuid('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
   primaryDeviceId: uuid('primary_device_id'), // FK to devices.id added via migration (circular ref)
-  userId:          uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  userId:          uuid('user_id').unique().references(() => users.id, { onDelete: 'set null' }), // one user → one principal
   name:            text('name').notNull(),
   role:            text('role'),
   phone:           text('phone'),
