@@ -1,19 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import Map, { Marker, NavigationControl, AttributionControl, Source, Layer } from 'react-map-gl/mapbox'
+import Map, { Marker, AttributionControl, Source, Layer } from 'react-map-gl/mapbox'
 import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { MapSearch, MapStyleToggle, SearchPinMarker } from '../components/MapSearch'
+import { MapSearch, SearchPinMarker } from '../components/MapSearch'
+import { MapControls, MAP_STYLES as MAP_STYLE_URLS } from '../components/MapControls'
 import { searchGoogle, retrieveGoogle, viewportToBbox } from '../../../shared/utils/googlePlaces'
 import { apiFetch, apiUrl } from '../../../shared/utils/api'
 import './MapStudioPage.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
-const MAP_STYLES = {
-  dark:      'mapbox://styles/mapbox/dark-v11',
-  satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
-}
 
 const RISK_META = {
   low:      { color: '#22c55e', label: 'LOW'  },
@@ -43,8 +40,12 @@ export default function MapStudioPage() {
   const [mapLoaded,     setMapLoaded]     = useState(false)
   const [zones,         setZones]         = useState([])
   const [zonesLoading,  setZonesLoading]  = useState(true)
-  const [markers,       setMarkers]       = useState([])
-  const [mode,          setMode]          = useState('view') // 'view' | 'add-zone'
+  const [markers,          setMarkers]          = useState([])
+  const [mode,             setMode]             = useState('view') // 'view'|'add-zone'|'edit-zone'|'add-marker'|'edit-marker'
+  const [markerForm,       setMarkerForm]       = useState({ name: '', category: 'Other', riskLevel: 'low', description: '' })
+  const [pendingMarkerPos, setPendingMarkerPos] = useState(null) // { lng, lat }
+  const [editingZone,      setEditingZone]      = useState(null)
+  const [editingMarker,    setEditingMarker]    = useState(null)
   const [listSearch,    setListSearch]    = useState('')
   const [isDrawing,      setIsDrawing]      = useState(false)
   const [zoneForm,       setZoneForm]       = useState(emptyZoneForm)
@@ -83,6 +84,11 @@ export default function MapStudioPage() {
       .then(setZones)
       .catch(err => console.error('[MapStudio] Failed to load zones:', err))
       .finally(() => setZonesLoading(false))
+
+    apiFetch(apiUrl('/api/markers'))
+      .then(r => r.json())
+      .then(data => setMarkers(Array.isArray(data) ? data : []))
+      .catch(() => {})
   }, [])
 
   const zonesGeoJSON = useMemo(() => ({
@@ -112,6 +118,136 @@ export default function MapStudioPage() {
     setIsDrawing(false)
     setDrawnGeometry(null)
     setSearchBoundary(null)
+    setMode('view')
+  }
+
+  function enterAddMarker() {
+    setMarkerForm({ name: '', category: 'Other', riskLevel: 'low', description: '' })
+    setPendingMarkerPos(null)
+    setIsDrawing(false)
+    setDrawnGeometry(null)
+    setMode('add-marker')
+  }
+
+  function cancelAddMarker() {
+    setPendingMarkerPos(null)
+    setMode('view')
+  }
+
+  function enterEditZone(zone) {
+    setEditingZone(zone)
+    setZoneForm({ name: zone.name, riskLevel: zone.riskLevel, description: zone.description ?? '' })
+    setDrawnGeometry(null)
+    setIsDrawing(false)
+    setSearchBoundary(null)
+    setMode('edit-zone')
+  }
+
+  function cancelEditZone() {
+    setEditingZone(null)
+    setIsDrawing(false)
+    setDrawnGeometry(null)
+    setSearchBoundary(null)
+    setMode('view')
+  }
+
+  async function saveEditZone() {
+    if (!zoneForm.name.trim()) return
+    const geometry = drawnGeometry ?? editingZone.geometry
+    try {
+      const res = await apiFetch(apiUrl(`/api/zones/${editingZone.id}`), {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:        zoneForm.name.trim(),
+          description: zoneForm.description.trim() || null,
+          riskLevel:   zoneForm.riskLevel,
+          geometry,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const updated = await res.json()
+      setZones(p => p.map(z => z.id === updated.id ? updated : z))
+    } catch (err) {
+      console.error('[MapStudio] Edit zone failed:', err)
+    }
+    setEditingZone(null)
+    setIsDrawing(false)
+    setDrawnGeometry(null)
+    setSearchBoundary(null)
+    setMode('view')
+  }
+
+  function enterEditMarker(marker) {
+    setEditingMarker(marker)
+    setMarkerForm({
+      name:        marker.name,
+      category:    marker.category ?? 'Other',
+      riskLevel:   marker.riskLevel,
+      description: marker.description ?? '',
+    })
+    setPendingMarkerPos(null)
+    setIsDrawing(false)
+    setDrawnGeometry(null)
+    setMode('edit-marker')
+  }
+
+  function cancelEditMarker() {
+    setEditingMarker(null)
+    setPendingMarkerPos(null)
+    setMode('view')
+  }
+
+  async function saveEditMarker() {
+    if (!markerForm.name.trim()) return
+    const lat = pendingMarkerPos?.lat ?? editingMarker.latitude
+    const lng = pendingMarkerPos?.lng ?? editingMarker.longitude
+    try {
+      const res = await apiFetch(apiUrl(`/api/markers/${editingMarker.id}`), {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:        markerForm.name.trim(),
+          description: markerForm.description.trim() || null,
+          category:    markerForm.category,
+          riskLevel:   markerForm.riskLevel,
+          latitude:    lat,
+          longitude:   lng,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const updated = await res.json()
+      setMarkers(p => p.map(m => m.id === updated.id ? updated : m))
+    } catch (err) {
+      console.error('[MapStudio] Edit marker failed:', err)
+    }
+    setEditingMarker(null)
+    setPendingMarkerPos(null)
+    setMode('view')
+  }
+
+  async function saveMarker() {
+    if (!markerForm.name.trim() || !pendingMarkerPos) return
+    try {
+      const res = await apiFetch(apiUrl('/api/markers'), {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:        markerForm.name.trim(),
+          description: markerForm.description.trim() || null,
+          category:    markerForm.category,
+          riskLevel:   markerForm.riskLevel,
+          latitude:    pendingMarkerPos.lat,
+          longitude:   pendingMarkerPos.lng,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const marker = await res.json()
+      setMarkers(p => [...p, marker])
+    } catch (err) {
+      console.error('[MapStudio] Save marker failed:', err)
+    }
+    setPendingMarkerPos(null)
     setMode('view')
   }
 
@@ -188,21 +324,46 @@ export default function MapStudioPage() {
 
       {/* ── left panel ────────────────────────── */}
       <aside className="ms-panel">
-        {mode === 'add-zone' ? (
+        {mode === 'add-zone' || mode === 'edit-zone' ? (
           <ZoneForm
+            isEditing={mode === 'edit-zone'}
             form={zoneForm}
             onChange={patch => setZoneForm(p => ({ ...p, ...patch }))}
             hasGeometry={drawnGeometry != null}
+            hasExistingGeometry={mode === 'edit-zone'}
             isDrawing={isDrawing}
-            canSave={canSave}
+            canSave={mode === 'edit-zone'
+              ? zoneForm.name.trim().length > 0
+              : zoneForm.name.trim().length > 0 && drawnGeometry != null}
             searchBoundary={searchBoundary}
             onStartDrawing={startDrawing}
             onRedraw={redraw}
             onFlyTo={flyTo}
             onBoundaryFound={setSearchBoundary}
             onUseBoundary={useBoundaryAsZone}
-            onSave={saveZone}
-            onCancel={cancelAddZone}
+            onSave={mode === 'edit-zone' ? saveEditZone : saveZone}
+            onCancel={mode === 'edit-zone' ? cancelEditZone : cancelAddZone}
+          />
+        ) : mode === 'add-marker' || mode === 'edit-marker' ? (
+          <MarkerForm
+            isEditing={mode === 'edit-marker'}
+            form={markerForm}
+            onChange={patch => setMarkerForm(p => ({ ...p, ...patch }))}
+            hasPosition={pendingMarkerPos != null}
+            canSave={mode === 'edit-marker'
+              ? markerForm.name.trim().length > 0
+              : markerForm.name.trim().length > 0 && pendingMarkerPos != null}
+            onFlyTo={flyTo}
+            onPlacePin={(pos, name, address) => {
+              setPendingMarkerPos(pos)
+              setMarkerForm(p => ({
+                ...p,
+                name:        name        || p.name,
+                description: address     || p.description,
+              }))
+            }}
+            onSave={mode === 'edit-marker' ? saveEditMarker : saveMarker}
+            onCancel={mode === 'edit-marker' ? cancelEditMarker : cancelAddMarker}
           />
         ) : (
           <>
@@ -239,6 +400,7 @@ export default function MapStudioPage() {
                       ? <li className="ms-list__empty">{q ? 'No zones match' : 'No zones yet'}</li>
                       : filtered.map(z => (
                           <ZoneItem key={z.id} zone={z}
+                            onEdit={() => { flyToZone(z); enterEditZone(z) }}
                             onDelete={async () => {
                               await apiFetch(apiUrl(`/api/zones/${z.id}`), { method: 'DELETE' })
                               setZones(p => p.filter(x => x.id !== z.id))
@@ -263,7 +425,7 @@ export default function MapStudioPage() {
                     <span className="ms-section__label">MARKERS</span>
                     <span className="ms-section__count">{filtered.length}</span>
                     <div className="ms-section__spacer" />
-                    <button className="ms-add-btn">
+                    <button className="ms-add-btn" onClick={enterAddMarker}>
                       <PlusIcon /><span>Add Marker</span>
                     </button>
                   </div>
@@ -272,7 +434,11 @@ export default function MapStudioPage() {
                       ? <li className="ms-list__empty">{q ? 'No markers match' : 'No markers yet'}</li>
                       : filtered.map(m => (
                           <MarkerItem key={m.id} marker={m}
-                            onDelete={() => setMarkers(p => p.filter(x => x.id !== m.id))} />
+                            onEdit={() => enterEditMarker(m)}
+                            onDelete={async () => {
+                              await apiFetch(apiUrl(`/api/markers/${m.id}`), { method: 'DELETE' })
+                              setMarkers(p => p.filter(x => x.id !== m.id))
+                            }} />
                         ))
                     }
                   </ul>
@@ -284,15 +450,20 @@ export default function MapStudioPage() {
       </aside>
 
       {/* ── map ───────────────────────────────── */}
-      <div className="ms-map">
+      <div className={`ms-map${(mode === 'add-marker' || mode === 'edit-marker') ? ' ms-map--crosshair' : ''}`}>
         <Map
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={MAP_STYLES[mapStyle]}
+          mapStyle={MAP_STYLE_URLS[mapStyle]}
           projection="globe"
           attributionControl={false}
+          onClick={e => {
+            if (mode === 'add-marker') {
+              setPendingMarkerPos({ lng: e.lngLat.lng, lat: e.lngLat.lat })
+            }
+          }}
           onLoad={e => {
             const map = e.target
             function syncFog() {
@@ -314,11 +485,10 @@ export default function MapStudioPage() {
             setMapLoaded(true)
           }}
         >
-          <NavigationControl position="bottom-right" showCompass={false} />
           <AttributionControl compact position="bottom-left" />
 
           <MapSearch onFlyTo={flyTo} onPin={setSearchPin} />
-          <MapStyleToggle style={mapStyle} onChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
 
           {searchPin && (
             <Marker longitude={searchPin.lng} latitude={searchPin.lat} anchor="bottom">
@@ -342,9 +512,51 @@ export default function MapStudioPage() {
               paint={{ 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.8 }} />
           </Source>
 
+          {markers
+            .filter(m => m.enabled !== false && m.id !== editingMarker?.id)
+            .map(m => (
+              <Marker key={m.id} longitude={m.longitude} latitude={m.latitude} anchor="bottom">
+                <div title={`${m.name}${m.category ? ` · ${m.category}` : ''}`}
+                  style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))', cursor: 'default' }}>
+                  <MapMarkerPin color={RISK_META[m.riskLevel]?.color ?? RISK_META.low.color} />
+                </div>
+              </Marker>
+            ))}
+
+          {/* Editing marker: show at pending pos (if repositioned) or original pos */}
+          {editingMarker && (
+            <Marker
+              longitude={pendingMarkerPos?.lng ?? editingMarker.longitude}
+              latitude={pendingMarkerPos?.lat ?? editingMarker.latitude}
+              anchor="bottom"
+            >
+              <div style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.7))', cursor: 'default' }}>
+                <MapMarkerPin color={RISK_META[markerForm.riskLevel]?.color ?? RISK_META.low.color} />
+              </div>
+            </Marker>
+          )}
+
+          {/* Add-marker mode: preview pin */}
+          {!editingMarker && pendingMarkerPos && (
+            <Marker longitude={pendingMarkerPos.lng} latitude={pendingMarkerPos.lat} anchor="bottom">
+              <div style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.7))', cursor: 'default', opacity: 0.85 }}>
+                <MapMarkerPin color={RISK_META[markerForm.riskLevel]?.color ?? RISK_META.low.color} />
+              </div>
+            </Marker>
+          )}
+
           {isDrawing && (
             <div className="ms-draw-hint">
               Click to place points &middot; Double-click to close shape
+            </div>
+          )}
+
+          {(mode === 'add-marker' || mode === 'edit-marker') && (
+            <div className="ms-draw-hint">
+              {mode === 'edit-marker'
+                ? pendingMarkerPos ? 'Click again to reposition' : 'Click map to move marker'
+                : pendingMarkerPos ? 'Click again to reposition' : 'Click on the map to place marker'
+              }
             </div>
           )}
         </Map>
@@ -357,7 +569,7 @@ export default function MapStudioPage() {
 /* ─────────────────────────────────────────
    Zone form
 ───────────────────────────────────────── */
-function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBoundary, onStartDrawing, onRedraw, onFlyTo, onBoundaryFound, onUseBoundary, onSave, onCancel }) {
+function ZoneForm({ isEditing, hasExistingGeometry, form, onChange, hasGeometry, isDrawing, canSave, searchBoundary, onStartDrawing, onRedraw, onFlyTo, onBoundaryFound, onUseBoundary, onSave, onCancel }) {
   const [sessionToken]  = useState(() => crypto.randomUUID())
   const debounceRef     = useRef(null)
   const [searchQuery,   setSearchQuery]   = useState('')
@@ -381,11 +593,11 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
 
   async function handleSuggestionClick(s) {
     const placeName = s.name + (s.context ? `, ${s.context}` : '')
-    setSearchQuery(placeName)
+    setSearchQuery(s.name)
     setSearchOpen(false)
     setSuggestions([])
 
-    // Navigate the map via Google viewport bounds
+    // Fly map + auto-fill name/description
     const place = await retrieveGoogle(s.placeId).catch(() => null)
     if (place) {
       const bbox = viewportToBbox(place.viewport)
@@ -394,9 +606,13 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
       } else if (place.location) {
         onFlyTo(place.location.longitude, place.location.latitude, null)
       }
+      onChange({
+        name:        place.displayName?.text ?? s.name,
+        description: place.formattedAddress ?? s.context ?? '',
+      })
     }
 
-    // Fetch and display the boundary polygon from Nominatim
+    // Fetch Nominatim boundary polygon
     fetchNominatimBoundary(placeName)
       .then(boundary => onBoundaryFound(boundary))
       .catch(() => onBoundaryFound(null))
@@ -408,72 +624,27 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
         <button className="ms-form-back" onClick={onCancel} aria-label="Cancel">
           <BackIcon />
         </button>
-        <span className="ms-form-title">ADD ZONE</span>
+        <span className="ms-form-title">{isEditing ? 'EDIT ZONE' : 'ADD ZONE'}</span>
       </div>
 
       <div className="ms-form-body">
 
-        {/* Name */}
-        <div className="ms-field">
-          <label className="ms-label">NAME <span className="ms-required">*</span></label>
-          <input
-            className="ms-input"
-            placeholder="e.g. Zone 18"
-            value={form.name}
-            onChange={e => onChange({ name: e.target.value })}
-            autoFocus
-          />
-        </div>
-
-        {/* Risk level */}
-        <div className="ms-field">
-          <label className="ms-label">RISK LEVEL</label>
-          <div className="ms-risk-picker">
-            {Object.entries(RISK_META).map(([key, { color, label }]) => (
-              <button
-                key={key}
-                className={`ms-risk-btn${form.riskLevel === key ? ' active' : ''}`}
-                style={form.riskLevel === key
-                  ? { background: color, borderColor: color, color: '#0a0e10' }
-                  : { borderColor: `${color}55`, color }
-                }
-                onClick={() => onChange({ riskLevel: key })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Description */}
+        {/* Search — leads the form */}
         <div className="ms-field">
           <label className="ms-label">
-            DESCRIPTION <span className="ms-optional">optional</span>
+            {isEditing ? 'SEARCH NEW LOCATION' : 'SEARCH LOCATION'}
           </label>
-          <textarea
-            className="ms-input ms-textarea"
-            placeholder="Brief description…"
-            value={form.description}
-            onChange={e => onChange({ description: e.target.value })}
-            rows={2}
-          />
-        </div>
-
-        <div className="ms-form-separator" />
-
-        {/* Location search */}
-        <div className="ms-field">
-          <label className="ms-label">NAVIGATE TO LOCATION</label>
           <div className="ms-search-wrap">
             <div className="ms-search-input-row">
               <SearchIcon />
               <input
                 className="ms-search-input"
-                placeholder="Search a place…"
+                placeholder="Search a place or region…"
                 value={searchQuery}
                 onChange={handleSearchChange}
                 onFocus={() => suggestions.length > 0 && setSearchOpen(true)}
                 onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                autoFocus={!isEditing}
               />
               {searchLoading && <span className="ms-search-spinner" />}
             </div>
@@ -497,6 +668,55 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
           </div>
         </div>
 
+        <div className="ms-form-separator" />
+
+        {/* Name — auto-filled, editable */}
+        <div className="ms-field">
+          <label className="ms-label">NAME <span className="ms-required">*</span></label>
+          <input
+            className="ms-input"
+            placeholder="e.g. Zone 18"
+            value={form.name}
+            onChange={e => onChange({ name: e.target.value })}
+          />
+        </div>
+
+        {/* Description — auto-filled with address, editable */}
+        <div className="ms-field">
+          <label className="ms-label">
+            DESCRIPTION <span className="ms-optional">address or note</span>
+          </label>
+          <textarea
+            className="ms-input ms-textarea"
+            placeholder="Address or brief description…"
+            value={form.description}
+            onChange={e => onChange({ description: e.target.value })}
+            rows={2}
+          />
+        </div>
+
+        {/* Risk level */}
+        <div className="ms-field">
+          <label className="ms-label">RISK LEVEL</label>
+          <div className="ms-risk-picker">
+            {Object.entries(RISK_META).map(([key, { color, label }]) => (
+              <button
+                key={key}
+                className={`ms-risk-btn${form.riskLevel === key ? ' active' : ''}`}
+                style={form.riskLevel === key
+                  ? { background: color, borderColor: color, color: '#0a0e10' }
+                  : { borderColor: `${color}55`, color }
+                }
+                onClick={() => onChange({ riskLevel: key })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="ms-form-separator" />
+
         {/* Boundary found — offer to use it */}
         {searchBoundary && (
           <div className="ms-boundary-found">
@@ -513,21 +733,25 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
           </div>
         )}
 
-        <div className="ms-form-separator" />
-
         {/* Draw section */}
         <div className="ms-draw-section">
-          <div className={`ms-draw-status${hasGeometry ? ' ms-draw-status--done' : ''}`}>
+          <div className={`ms-draw-status${(hasGeometry || hasExistingGeometry) ? ' ms-draw-status--done' : ''}`}>
             <span className="ms-draw-status__dot" />
             <span className="ms-draw-status__text">
-              {hasGeometry ? 'Zone boundary drawn' : isDrawing ? 'Drawing — click to place points' : 'No boundary drawn yet'}
+              {hasGeometry
+                ? 'New boundary drawn'
+                : isDrawing
+                  ? 'Drawing — click to place points'
+                  : hasExistingGeometry
+                    ? 'Using existing boundary'
+                    : 'No boundary drawn yet'}
             </span>
           </div>
 
           {!isDrawing && !hasGeometry && (
             <button className="ms-draw-start-btn" onClick={onStartDrawing}>
               <DrawIcon />
-              Start Drawing
+              {hasExistingGeometry ? 'Redraw Boundary' : 'Start Drawing'}
             </button>
           )}
 
@@ -544,7 +768,7 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
       <div className="ms-form-footer">
         <button className="ms-btn ms-btn--ghost" onClick={onCancel}>Cancel</button>
         <button className="ms-btn ms-btn--primary" onClick={onSave} disabled={!canSave}>
-          Save Zone
+          {isEditing ? 'Save Changes' : 'Save Zone'}
         </button>
       </div>
     </div>
@@ -552,9 +776,202 @@ function ZoneForm({ form, onChange, hasGeometry, isDrawing, canSave, searchBound
 }
 
 /* ─────────────────────────────────────────
+   Marker form
+───────────────────────────────────────── */
+const MARKER_CATEGORIES = ['Hospital', 'Police', 'Embassy', 'Safe House', 'Danger', 'Checkpoint', 'Other']
+
+function MarkerForm({ isEditing, form, onChange, hasPosition, canSave, onFlyTo, onPlacePin, onSave, onCancel }) {
+  const [sessionToken]  = useState(() => crypto.randomUUID())
+  const debounceRef     = useRef(null)
+  const [searchQuery,   setSearchQuery]   = useState('')
+  const [suggestions,   setSuggestions]   = useState([])
+  const [searchOpen,    setSearchOpen]    = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  function handleSearchChange(e) {
+    const q = e.target.value
+    setSearchQuery(q)
+    clearTimeout(debounceRef.current)
+    if (!q.trim()) { setSuggestions([]); setSearchOpen(false); return }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true)
+      const results = await searchGoogle(q, sessionToken).catch(() => [])
+      setSuggestions(results)
+      setSearchOpen(results.length > 0)
+      setSearchLoading(false)
+    }, 350)
+  }
+
+  async function handleSuggestionClick(s) {
+    setSearchQuery(s.name)
+    setSearchOpen(false)
+    setSuggestions([])
+
+    const place = await retrieveGoogle(s.placeId).catch(() => null)
+    if (!place) return
+
+    // Fly map to the result
+    const bbox = viewportToBbox(place.viewport)
+    if (bbox) {
+      onFlyTo(null, null, bbox)
+    } else if (place.location) {
+      onFlyTo(place.location.longitude, place.location.latitude, null)
+    }
+
+    // Drop the pin and auto-fill name + description
+    if (place.location) {
+      onPlacePin(
+        { lng: place.location.longitude, lat: place.location.latitude },
+        place.displayName?.text ?? s.name,
+        place.formattedAddress ?? s.context ?? '',
+      )
+    }
+  }
+
+  return (
+    <div className="ms-zone-form">
+      <div className="ms-form-header">
+        <button className="ms-form-back" onClick={onCancel} aria-label="Cancel">
+          <BackIcon />
+        </button>
+        <span className="ms-form-title">{isEditing ? 'EDIT MARKER' : 'ADD MARKER'}</span>
+      </div>
+
+      <div className="ms-form-body">
+
+        {/* Search — leads the form */}
+        <div className="ms-field">
+          <label className="ms-label">
+            {isEditing ? 'SEARCH NEW LOCATION' : 'SEARCH LOCATION'}
+          </label>
+          <div className="ms-search-wrap">
+            <div className="ms-search-input-row">
+              <SearchIcon />
+              <input
+                className="ms-search-input"
+                placeholder="Search a place…"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={() => suggestions.length > 0 && setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                autoFocus={!isEditing}
+              />
+              {searchLoading && <span className="ms-search-spinner" />}
+            </div>
+            {searchOpen && (
+              <ul className="ms-search-results">
+                {suggestions.map(s => (
+                  <li key={s.placeId}>
+                    <button
+                      className="ms-search-result"
+                      onMouseDown={e => { e.preventDefault(); handleSuggestionClick(s) }}
+                    >
+                      <span className="ms-search-result__name">{s.name}</span>
+                      {s.context && (
+                        <span className="ms-search-result__context">{s.context}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="ms-marker-pos-hint">
+            {hasPosition
+              ? 'Pin placed — click map to reposition'
+              : isEditing
+                ? 'Search to move, or click map directly'
+                : 'Or click the map directly to place a pin'}
+          </p>
+        </div>
+
+        <div className="ms-form-separator" />
+
+        {/* Name — auto-filled from search, editable */}
+        <div className="ms-field">
+          <label className="ms-label">NAME <span className="ms-required">*</span></label>
+          <input
+            className="ms-input"
+            placeholder="e.g. City Hospital"
+            value={form.name}
+            onChange={e => onChange({ name: e.target.value })}
+          />
+        </div>
+
+        {/* Description — auto-filled with address, editable */}
+        <div className="ms-field">
+          <label className="ms-label">
+            DESCRIPTION <span className="ms-optional">address or note</span>
+          </label>
+          <textarea
+            className="ms-input ms-textarea"
+            placeholder="Address or brief note…"
+            value={form.description}
+            onChange={e => onChange({ description: e.target.value })}
+            rows={2}
+          />
+        </div>
+
+        {/* Category */}
+        <div className="ms-field">
+          <label className="ms-label">CATEGORY</label>
+          <select
+            className="ms-input ms-select"
+            value={form.category}
+            onChange={e => onChange({ category: e.target.value })}
+          >
+            {MARKER_CATEGORIES.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Risk level */}
+        <div className="ms-field">
+          <label className="ms-label">RISK LEVEL</label>
+          <div className="ms-risk-picker">
+            {Object.entries(RISK_META).map(([key, { color, label }]) => (
+              <button
+                key={key}
+                className={`ms-risk-btn${form.riskLevel === key ? ' active' : ''}`}
+                style={form.riskLevel === key
+                  ? { background: color, borderColor: color, color: '#0a0e10' }
+                  : { borderColor: `${color}55`, color }
+                }
+                onClick={() => onChange({ riskLevel: key })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      <div className="ms-form-footer">
+        <button className="ms-btn ms-btn--ghost" onClick={onCancel}>Cancel</button>
+        <button className="ms-btn ms-btn--primary" onClick={onSave} disabled={!canSave}>
+          {isEditing ? 'Save Changes' : 'Save Marker'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MapMarkerPin({ color }) {
+  return (
+    <svg width="20" height="26" viewBox="0 0 20 26" fill="none" style={{ display: 'block' }}>
+      <path d="M10 0C4.477 0 0 4.477 0 10c0 7.5 10 16 10 16S20 17.5 20 10C20 4.477 15.523 0 10 0z"
+        fill={color} />
+      <circle cx="10" cy="10" r="4" fill="white" fillOpacity="0.9" />
+    </svg>
+  )
+}
+
+/* ─────────────────────────────────────────
    List items
 ───────────────────────────────────────── */
-function ZoneItem({ zone, onDelete, onFlyTo }) {
+function ZoneItem({ zone, onEdit, onDelete, onFlyTo }) {
   const risk = RISK_META[zone.riskLevel] ?? RISK_META.low
   return (
     <li>
@@ -566,6 +983,10 @@ function ZoneItem({ zone, onDelete, onFlyTo }) {
           style={{ color: risk.color, borderColor: `${risk.color}44`, background: `${risk.color}18` }}>
           {risk.label}
         </span>
+        <button className="ms-item__edit" title="Edit"
+          onClick={e => { e.stopPropagation(); onEdit() }}>
+          <EditIcon />
+        </button>
         <button className="ms-item__delete" title="Delete"
           onClick={e => { e.stopPropagation(); onDelete() }}>
           <TrashIcon />
@@ -575,7 +996,7 @@ function ZoneItem({ zone, onDelete, onFlyTo }) {
   )
 }
 
-function MarkerItem({ marker, onDelete }) {
+function MarkerItem({ marker, onEdit, onDelete }) {
   const risk = RISK_META[marker.riskLevel] ?? RISK_META.low
   return (
     <li>
@@ -584,6 +1005,9 @@ function MarkerItem({ marker, onDelete }) {
           style={{ background: risk.color, boxShadow: `0 0 6px ${risk.color}66` }} />
         <span className="ms-item__name">{marker.name}</span>
         <span className="ms-item__category">{marker.category ?? 'POI'}</span>
+        <button className="ms-item__edit" title="Edit" onClick={onEdit}>
+          <EditIcon />
+        </button>
         <button className="ms-item__delete" title="Delete" onClick={onDelete}>
           <TrashIcon />
         </button>
@@ -604,6 +1028,13 @@ function PlusIcon() {
 function TrashIcon() {
   return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
     <path d="M1.5 3h10M5 3V2h3v1M3 3l.5 8h6L10 3"
+      stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+}
+
+function EditIcon() {
+  return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+    <path d="M9 2l2 2L4 11H2V9L9 2z"
       stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 }

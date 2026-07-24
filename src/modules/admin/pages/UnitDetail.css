@@ -97,37 +97,6 @@
   border: 1px solid;
 }
 
-.ud-header__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 20px;
-}
-
-.ud-meta-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ud-meta-item__label {
-  font-family: var(--adm-mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--adm-text-dim);
-  text-transform: uppercase;
-}
-
-.ud-meta-item__value {
-  font-size: 12px;
-  color: var(--adm-text-muted);
-}
-
-.ud-meta-item__value.mono {
-  font-family: var(--adm-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
 
 /* ── tabs ─────────────────────────────── */
 .ud-tabs {
@@ -515,6 +484,61 @@
 .ud-diag-tile__sub {
   font-size: 10px;
   color: var(--adm-text-dim);
+}
+
+/* ── address card ─────────────────────── */
+.ud-address-card {
+  background: var(--adm-bg-base);
+  border: 1px solid var(--adm-border-sub);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ud-address-card__text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-main);
+  line-height: 1.4;
+}
+
+.ud-address-card__sub {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  color: var(--adm-text-dim);
+  letter-spacing: 0.04em;
+}
+
+/* ── position data rows ───────────────── */
+.ud-pos-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.ud-pos-row:last-child {
+  border-bottom: none;
+}
+
+.ud-pos-row__label {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--adm-text-dim);
+  text-transform: uppercase;
+}
+
+.ud-pos-row__value {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  color: var(--adm-text-main);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── person stats ─────────────────────── */

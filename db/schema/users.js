@@ -44,7 +44,7 @@ export const activityLogs = pgTable('activity_logs', {
   event:       text('event').notNull(),
   description: text('description').notNull(),
   actorId:     uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
-  subjectId:   uuid('subject_id').references(() => users.id, { onDelete: 'set null' }),
+  subjectId:   uuid('subject_id'),
   metadata:    jsonb('metadata'),
   createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

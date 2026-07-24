@@ -31,7 +31,7 @@ export async function authenticate(req, res, next) {
     }
 
     const [user] = await db
-      .select({ id: users.id, roleId: users.roleId })
+      .select({ id: users.id, name: users.name, roleId: users.roleId })
       .from(users)
       .where(eq(users.cognitoSub, payload.sub))
       .limit(1)
@@ -49,7 +49,7 @@ export async function authenticate(req, res, next) {
       permissions = rows.map(r => r.permission)
     }
 
-    req.caller = { id: user.id, roleId: user.roleId, permissions }
+    req.caller = { id: user.id, name: user.name, roleId: user.roleId, permissions }
     next()
   } catch (err) {
     console.error('[auth] authenticate error:', err)

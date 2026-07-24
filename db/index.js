@@ -8,7 +8,8 @@ import * as accountsSchema from './schema/accounts.js'
 import * as alertsSchema   from './schema/alerts.js'
 import * as plansSchema    from './schema/plans.js'
 import * as zonesSchema    from './schema/zones.js'
-const schema = { ...usersSchema, ...accountsSchema, ...alertsSchema, ...plansSchema, ...zonesSchema }
+import * as markersSchema  from './schema/markers.js'
+const schema = { ...usersSchema, ...accountsSchema, ...alertsSchema, ...plansSchema, ...zonesSchema, ...markersSchema }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: resolve(__dirname, '..', '.env') })
@@ -23,3 +24,4 @@ export * from './schema/users.js'
 export * from './schema/accounts.js'
 export * from './schema/plans.js'
 export * from './schema/zones.js'
+export * from './schema/markers.js'

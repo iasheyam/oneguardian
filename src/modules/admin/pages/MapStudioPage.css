@@ -209,6 +209,7 @@
   flex-shrink: 0;
 }
 
+.ms-item__edit,
 .ms-item__delete {
   color: var(--adm-text-muted);
   background: none;
@@ -224,7 +225,9 @@
   flex-shrink: 0;
 }
 
+.ms-item:hover .ms-item__edit,
 .ms-item:hover .ms-item__delete { opacity: 1; }
+.ms-item__edit:hover  { color: var(--adm-accent); }
 .ms-item__delete:hover { color: #ef4444; }
 
 /* ── divider ──────────────────────────── */
@@ -680,6 +683,27 @@
   color: var(--adm-text-dim);
   pointer-events: none;
   white-space: nowrap;
+}
+
+.ms-marker-pos-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--adm-text-muted);
+  line-height: 1.5;
+}
+
+.ms-map--crosshair,
+.ms-map--crosshair .mapboxgl-canvas {
+  cursor: crosshair !important;
+}
+
+.ms-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  cursor: pointer;
 }
 
 /* Suppress default mapbox-gl-draw control buttons (we manage draw mode programmatically) */

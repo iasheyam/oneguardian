@@ -1,0 +1,280 @@
+/* ── Map Controls Panel ───────────────────────────────────── */
+.mc-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-group {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 14, 16, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.mc-group--row {
+  flex-direction: row;
+}
+
+.mc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  font-family: var(--adm-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+/* separator between stacked buttons */
+.mc-btn + .mc-btn {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mc-group--row .mc-btn + .mc-btn {
+  border-top: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mc-btn:hover:not(.mc-btn--active):not(:disabled) {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mc-btn--active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.mc-btn--zoom {
+  font-size: 17px;
+  font-weight: 400;
+  padding: 5px 14px;
+  line-height: 1;
+}
+
+.mc-btn--poi {
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 7px 12px;
+}
+
+.mc-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.mc-poi-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mc-spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  flex-shrink: 0;
+  animation: mc-spin 0.7s linear infinite;
+}
+
+@keyframes mc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── POI markers on map ───────────────────────────────────── */
+.mc-poi-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.mc-poi-marker--police   { color: #4A90E2; }
+.mc-poi-marker--hospital { color: #F2495B; }
+
+.mc-poi-marker svg {
+  filter: drop-shadow(0 0 4px currentColor);
+  transition: transform 0.15s;
+}
+
+.mc-poi-marker--sel svg,
+.mc-poi-marker:hover svg {
+  transform: scale(1.4);
+  filter: drop-shadow(0 0 7px currentColor);
+}
+
+.mc-poi-marker__label {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(10, 14, 16, 0.82);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: inherit;
+}
+
+/* ── Unit / POI popup ─────────────────────────────────────── */
+.unit-popup .mapboxgl-popup-content {
+  background: rgba(9, 13, 15, 0.96);
+  border: 1px solid rgba(55, 194, 184, 0.2);
+  border-radius: 10px;
+  padding: 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
+  min-width: 230px;
+}
+
+.unit-popup .mapboxgl-popup-tip {
+  border-top-color: rgba(9, 13, 15, 0.96);
+}
+
+.unit-popup .mapboxgl-popup-close-button {
+  color: #AEB8BD;
+  font-size: 14px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(174, 184, 189, 0.12);
+  border: 1px solid rgba(174, 184, 189, 0.2);
+  border-radius: 50%;
+  transition: background 0.12s, color 0.12s;
+}
+
+.unit-popup .mapboxgl-popup-close-button:hover {
+  color: #EEF2F3;
+  background: rgba(174, 184, 189, 0.22);
+}
+
+.upu {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.upu-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 42px 10px 14px;
+  border-bottom: 1px solid rgba(55, 194, 184, 0.1);
+}
+
+.upu-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.upu-id {
+  font-family: var(--adm-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #EEF2F3;
+  letter-spacing: 0.05em;
+  flex: 1;
+}
+
+.upu-chip {
+  font-family: var(--adm-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.upu-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 6px 0;
+}
+
+.upu-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+  padding: 5px 14px;
+  align-items: baseline;
+}
+
+.upu-key {
+  font-family: var(--adm-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #4A5A62;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.upu-val {
+  font-size: 12px;
+  color: #AEB8BD;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upu-val--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.5;
+}
+
+.upu-open {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(55, 194, 184, 0.1);
+  padding: 10px 14px;
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #37C2B8;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  border-radius: 0 0 10px 10px;
+}
+
+.upu-open:hover {
+  background: rgba(55, 194, 184, 0.08);
+  color: #5ED8D0;
+}

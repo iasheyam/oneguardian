@@ -17,6 +17,7 @@ import { accounts, principals, vehicles, groups, groupMembers, devices, userScop
 import { triggers, triggerUnits, alerts } from '../db/schema/alerts.js'
 import { places, plans, planUnits, planLegs } from '../db/schema/plans.js'
 import { zones } from '../db/schema/zones.js'
+import { markers } from '../db/schema/markers.js'
 import { eq, and, or, getTableColumns, desc, inArray, ne, sql, isNotNull, gte, lte } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { trackEvent } from './trackEvent.js'
@@ -517,6 +518,7 @@ app.post('/api/roles', ...requirePermission('admin'), async (req, res) => {
     if (permissions.length > 0) {
       await db.insert(rolePermissions).values(permissions.map(p => ({ roleId: role.id, permission: p })))
     }
+    trackEvent({ event: 'role.created', description: `${req.caller.name} created role "${role.name}"`, actorId: req.caller.id, subjectId: role.id })
     res.json({ ...role, permissions })
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A role with this name already exists' })
@@ -548,6 +550,7 @@ app.patch('/api/roles/:id', ...requirePermission('admin'), async (req, res) => {
     }
 
     const perms = await db.select().from(rolePermissions).where(eq(rolePermissions.roleId, id))
+    trackEvent({ event: 'role.updated', description: `${req.caller.name} updated role "${updated.name}"`, actorId: req.caller.id, subjectId: updated.id })
     res.json({ ...updated, permissions: perms.map(p => p.permission) })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -561,6 +564,7 @@ app.delete('/api/roles/:id', ...requirePermission('admin'), async (req, res) => 
     const [userWithRole] = await db.select({ id: users.id }).from(users).where(eq(users.roleId, id)).limit(1)
     if (userWithRole) return res.status(409).json({ error: 'Cannot delete a role that is assigned to active users' })
     await db.delete(roles).where(eq(roles.id, id))
+    trackEvent({ event: 'role.deleted', description: `${req.caller.name} deleted role "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -600,17 +604,35 @@ app.post('/api/users/:userId/assignments', ...requirePermission('admin'), async 
       .onConflictDoNothing()
       .returning()
     if (!row) return res.status(409).json({ error: 'Assignment already exists' })
+    const [targetUser, unit] = await Promise.all([
+      db.select({ name: users.name }).from(users).where(eq(users.id, req.params.userId)).limit(1),
+      scopeType === 'principal'
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, scopeId)).limit(1)
+        : db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, scopeId)).limit(1),
+    ])
+    trackEvent({ event: 'member.scope_assigned', description: `${req.caller.name} granted "${targetUser[0]?.name}" access to "${unit[0]?.name}"`, actorId: req.caller.id, subjectId: req.params.userId, metadata: { scopeType, scopeId, accountId } })
     res.json(row)
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.delete('/api/users/:userId/assignments/:assignmentId', ...requirePermission('admin'), async (req, res) => {
   try {
+    const [existing] = await db.select().from(userScopeAssignments)
+      .where(and(eq(userScopeAssignments.id, req.params.assignmentId), eq(userScopeAssignments.userId, req.params.userId)))
+      .limit(1)
+    if (!existing) return res.status(404).json({ error: 'Assignment not found' })
     await db.delete(userScopeAssignments)
       .where(and(
         eq(userScopeAssignments.id, req.params.assignmentId),
         eq(userScopeAssignments.userId, req.params.userId),
       ))
+    const [targetUser, unit] = await Promise.all([
+      db.select({ name: users.name }).from(users).where(eq(users.id, req.params.userId)).limit(1),
+      existing.scopeType === 'principal'
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, existing.scopeId)).limit(1)
+        : db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, existing.scopeId)).limit(1),
+    ])
+    trackEvent({ event: 'member.scope_removed', description: `${req.caller.name} removed "${targetUser[0]?.name}"'s access to "${unit[0]?.name}"`, actorId: req.caller.id, subjectId: req.params.userId, metadata: { scopeType: existing.scopeType, scopeId: existing.scopeId } })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -652,6 +674,7 @@ app.post('/api/accounts', ...requirePermission('accounts'), async (req, res) => 
   const { name, type, industry, status, contactName, contactEmail, contactPhone } = req.body
   try {
     const [acc] = await db.insert(accounts).values({ name, type, industry, status, contactName, contactEmail, contactPhone }).returning()
+    trackEvent({ event: 'account.created', description: `${req.caller.name} created account "${acc.name}"`, actorId: req.caller.id, subjectId: acc.id })
     res.json(await buildAccount(acc))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -669,13 +692,17 @@ app.patch('/api/accounts/:id', ...requirePermission('accounts'), async (req, res
       ...(contactPhone !== undefined && { contactPhone }),
       updatedAt: new Date(),
     }).where(eq(accounts.id, req.params.id)).returning()
+    trackEvent({ event: 'account.updated', description: `${req.caller.name} updated account "${acc.name}"`, actorId: req.caller.id, subjectId: acc.id })
     res.json(await buildAccount(acc))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.delete('/api/accounts/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.id, req.params.id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Account not found' })
     await db.delete(accounts).where(eq(accounts.id, req.params.id))
+    trackEvent({ event: 'account.deleted', description: `${req.caller.name} deleted account "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -691,6 +718,7 @@ app.post('/api/accounts/:accountId/principals', ...requirePermission('accounts')
       emergContactName: emergency?.contactName, emergContactPhone: emergency?.contactPhone,
       emergContactRelation: emergency?.contactRelation,
     }).returning()
+    trackEvent({ event: 'unit.created', description: `${req.caller.name} created principal "${p.name}"`, actorId: req.caller.id, subjectId: p.id })
     res.json({ id: p.id, type: 'person', name: p.name, role: p.role, phone: p.phone, email: p.email, status: p.status, devices: [], emergency: emergency ?? {} })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -713,6 +741,15 @@ app.patch('/api/accounts/:accountId/principals/:id', ...requirePermission('accou
       }),
       updatedAt: new Date(),
     }).where(eq(principals.id, req.params.id)).returning()
+    if (userId !== undefined) {
+      if (userId) {
+        trackEvent({ event: 'unit.user_linked', description: `${req.caller.name} linked user to principal "${p.name}"`, actorId: req.caller.id, subjectId: p.id, metadata: { userId } })
+      } else {
+        trackEvent({ event: 'unit.user_unlinked', description: `${req.caller.name} unlinked user from principal "${p.name}"`, actorId: req.caller.id, subjectId: p.id })
+      }
+    } else {
+      trackEvent({ event: 'unit.updated', description: `${req.caller.name} updated principal "${p.name}"`, actorId: req.caller.id, subjectId: p.id })
+    }
     res.json({ id: p.id, type: 'person', name: p.name, role: p.role, phone: p.phone, email: p.email, status: p.status, userId: p.userId ?? null, devices: [], emergency: emergency ?? {} })
   } catch (err) {
     if (err.code === '23505' && err.constraint === 'principals_user_id_unique') {
@@ -724,7 +761,10 @@ app.patch('/api/accounts/:accountId/principals/:id', ...requirePermission('accou
 
 app.delete('/api/accounts/:accountId/principals/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ id: principals.id, name: principals.name }).from(principals).where(eq(principals.id, req.params.id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Principal not found' })
     await db.delete(principals).where(eq(principals.id, req.params.id))
+    trackEvent({ event: 'unit.deleted', description: `${req.caller.name} deleted principal "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -736,6 +776,7 @@ app.post('/api/accounts/:accountId/vehicles', ...requirePermission('accounts'), 
     const [v] = await db.insert(vehicles).values({
       accountId: req.params.accountId, callsign: name, make, model, plate, armorLevel, status: status ?? 'normal',
     }).returning()
+    trackEvent({ event: 'unit.created', description: `${req.caller.name} created vehicle "${v.callsign}"`, actorId: req.caller.id, subjectId: v.id })
     res.json({ id: v.id, type: 'vehicle', name: v.callsign, make: v.make, model: v.model, plate: v.plate, armorLevel: v.armorLevel, status: v.status, devices: [] })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -752,13 +793,17 @@ app.patch('/api/accounts/:accountId/vehicles/:id', ...requirePermission('account
       ...(status     !== undefined && { status }),
       updatedAt: new Date(),
     }).where(eq(vehicles.id, req.params.id)).returning()
+    trackEvent({ event: 'unit.updated', description: `${req.caller.name} updated vehicle "${v.callsign}"`, actorId: req.caller.id, subjectId: v.id })
     res.json({ id: v.id, type: 'vehicle', name: v.callsign, make: v.make, model: v.model, plate: v.plate, armorLevel: v.armorLevel, status: v.status, devices: [] })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.delete('/api/accounts/:accountId/vehicles/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ id: vehicles.id, callsign: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, req.params.id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Vehicle not found' })
     await db.delete(vehicles).where(eq(vehicles.id, req.params.id))
+    trackEvent({ event: 'unit.deleted', description: `${req.caller.name} deleted vehicle "${existing.callsign}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -767,20 +812,28 @@ app.delete('/api/accounts/:accountId/vehicles/:id', ...requirePermission('accoun
 app.post('/api/accounts/:accountId/groups', ...requirePermission('accounts'), async (req, res) => {
   try {
     const [g] = await db.insert(groups).values({ accountId: req.params.accountId, name: req.body.name }).returning()
+    trackEvent({ event: 'group.created', description: `${req.caller.name} created group "${g.name}"`, actorId: req.caller.id, subjectId: g.id })
     res.json({ id: g.id, name: g.name, unitIds: [] })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.patch('/api/accounts/:accountId/groups/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ name: groups.name }).from(groups).where(eq(groups.id, req.params.id)).limit(1)
     const [g] = await db.update(groups).set({ name: req.body.name }).where(eq(groups.id, req.params.id)).returning()
+    if (existing) {
+      trackEvent({ event: 'group.renamed', description: `${req.caller.name} renamed group "${existing.name}" to "${g.name}"`, actorId: req.caller.id, subjectId: g.id, metadata: { from: existing.name, to: g.name } })
+    }
     res.json({ id: g.id, name: g.name })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.delete('/api/accounts/:accountId/groups/:id', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ id: groups.id, name: groups.name }).from(groups).where(eq(groups.id, req.params.id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Group not found' })
     await db.delete(groups).where(eq(groups.id, req.params.id))
+    trackEvent({ event: 'group.deleted', description: `${req.caller.name} deleted group "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -790,6 +843,13 @@ app.post('/api/accounts/:accountId/groups/:groupId/members', ...requirePermissio
   const { principalId, vehicleId } = req.body
   try {
     await db.insert(groupMembers).values({ groupId: req.params.groupId, principalId: principalId ?? null, vehicleId: vehicleId ?? null })
+    const [grp, unit] = await Promise.all([
+      db.select({ name: groups.name }).from(groups).where(eq(groups.id, req.params.groupId)).limit(1),
+      principalId
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, principalId)).limit(1)
+        : db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1),
+    ])
+    trackEvent({ event: 'group.member_added', description: `${req.caller.name} added "${unit[0]?.name}" to group "${grp[0]?.name}"`, actorId: req.caller.id, subjectId: req.params.groupId })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -802,6 +862,15 @@ app.delete('/api/accounts/:accountId/groups/:groupId/members', ...requirePermiss
     } else if (vehicleId) {
       await db.delete(groupMembers).where(and(eq(groupMembers.groupId, req.params.groupId), eq(groupMembers.vehicleId, vehicleId)))
     }
+    const [grp, unit] = await Promise.all([
+      db.select({ name: groups.name }).from(groups).where(eq(groups.id, req.params.groupId)).limit(1),
+      principalId
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, principalId)).limit(1)
+        : vehicleId
+          ? db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1)
+          : Promise.resolve([]),
+    ])
+    trackEvent({ event: 'group.member_removed', description: `${req.caller.name} removed "${unit[0]?.name}" from group "${grp[0]?.name}"`, actorId: req.caller.id, subjectId: req.params.groupId })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -835,6 +904,7 @@ app.post('/api/accounts/:accountId/units/:unitId/devices', ...requirePermission(
       )
     }
 
+    trackEvent({ event: 'device.created', description: `${req.caller.name} added device "${d.name}"`, actorId: req.caller.id, subjectId: d.id })
     res.json(serializeDevice(d))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -853,6 +923,7 @@ app.patch('/api/accounts/:accountId/units/:unitId/devices/:deviceId', ...require
       ...(traccarDeviceId  !== undefined && { traccarDeviceId }),
       updatedAt: new Date(),
     }).where(eq(devices.id, req.params.deviceId)).returning()
+    trackEvent({ event: 'device.updated', description: `${req.caller.name} updated device "${d.name}"`, actorId: req.caller.id, subjectId: d.id })
     res.json(serializeDevice(d))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -868,6 +939,7 @@ app.delete('/api/accounts/:accountId/units/:unitId/devices/:deviceId', ...requir
       }
     }
     await db.delete(devices).where(eq(devices.id, req.params.deviceId))
+    trackEvent({ event: 'device.deleted', description: `${req.caller.name} deleted device "${d?.name}"`, actorId: req.caller.id, subjectId: req.params.deviceId })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -879,9 +951,17 @@ app.patch('/api/accounts/:accountId/units/:unitId/primary-device', ...requirePer
     const [p] = await db.select().from(principals).where(eq(principals.id, unitId)).limit(1)
     if (p) {
       const [updated] = await db.update(principals).set({ primaryDeviceId: deviceId ?? null }).where(eq(principals.id, unitId)).returning()
+      const desc = deviceId
+        ? `${req.caller.name} set primary device for "${p.name}" to device ${deviceId}`
+        : `${req.caller.name} cleared primary device for "${p.name}"`
+      trackEvent({ event: 'unit.primary_device_set', description: desc, actorId: req.caller.id, subjectId: unitId })
       return res.json({ primaryDeviceId: updated.primaryDeviceId })
     }
     const [updated] = await db.update(vehicles).set({ primaryDeviceId: deviceId ?? null }).where(eq(vehicles.id, unitId)).returning()
+    const desc = deviceId
+      ? `${req.caller.name} set primary device for "${updated.callsign}" to device ${deviceId}`
+      : `${req.caller.name} cleared primary device for "${updated.callsign}"`
+    trackEvent({ event: 'unit.primary_device_set', description: desc, actorId: req.caller.id, subjectId: unitId })
     res.json({ primaryDeviceId: updated.primaryDeviceId })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -925,6 +1005,7 @@ app.post('/api/accounts/:accountId/places', ...requirePermission('accounts'), as
       console.warn('[places] Traccar sync failed (place saved without sync):', err.message)
     }
 
+    trackEvent({ event: 'place.created', description: `${req.caller.name} created place "${p.name}"`, actorId: req.caller.id, subjectId: p.id })
     res.json(serializePlace({ ...p, traccarGeofenceId }))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -959,6 +1040,7 @@ app.patch('/api/accounts/:accountId/places/:placeId', ...requirePermission('acco
       }
     }
 
+    trackEvent({ event: 'place.updated', description: `${req.caller.name} updated place "${p.name}"`, actorId: req.caller.id, subjectId: p.id })
     res.json(serializePlace(p))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -979,6 +1061,7 @@ app.delete('/api/accounts/:accountId/places/:placeId', ...requirePermission('acc
     }
 
     await db.delete(places).where(eq(places.id, req.params.placeId))
+    trackEvent({ event: 'place.deleted', description: `${req.caller.name} deleted place "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -1005,7 +1088,7 @@ app.get('/api/zones', ...requirePermission('ops'), async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.post('/api/zones', ...requirePermission('admin'), async (req, res) => {
+app.post('/api/zones', ...requirePermission('mapstudio'), async (req, res) => {
   const { name, description, geometry, riskLevel } = req.body
   if (!name?.trim())  return res.status(400).json({ error: 'name is required' })
   if (!geometry)      return res.status(400).json({ error: 'geometry is required' })
@@ -1029,11 +1112,12 @@ app.post('/api/zones', ...requirePermission('admin'), async (req, res) => {
 
     const finalZone = { ...zone, traccarGeofenceId }
     refreshZoneInCache(finalZone)
+    trackEvent({ event: 'zone.created', description: `${req.caller.name} created zone "${zone.name}"`, actorId: req.caller.id, subjectId: zone.id })
     res.json(serializeZone(finalZone))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.patch('/api/zones/:id', ...requirePermission('admin'), async (req, res) => {
+app.patch('/api/zones/:id', ...requirePermission('mapstudio'), async (req, res) => {
   const { name, description, geometry, riskLevel, enabled } = req.body
   try {
     const [existing] = await db.select().from(zones).where(eq(zones.id, req.params.id)).limit(1)
@@ -1063,11 +1147,12 @@ app.patch('/api/zones/:id', ...requirePermission('admin'), async (req, res) => {
     }
 
     refreshZoneInCache(zone)
+    trackEvent({ event: 'zone.updated', description: `${req.caller.name} updated zone "${zone.name}"`, actorId: req.caller.id, subjectId: zone.id })
     res.json(serializeZone(zone))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/zones/:id', ...requirePermission('admin'), async (req, res) => {
+app.delete('/api/zones/:id', ...requirePermission('mapstudio'), async (req, res) => {
   try {
     const [existing] = await db.select().from(zones).where(eq(zones.id, req.params.id)).limit(1)
     if (!existing) return res.status(404).json({ error: 'Zone not found' })
@@ -1084,6 +1169,67 @@ app.delete('/api/zones/:id', ...requirePermission('admin'), async (req, res) => 
     }
 
     await db.delete(zones).where(eq(zones.id, req.params.id))
+    trackEvent({ event: 'zone.deleted', description: `${req.caller.name} deleted zone "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── markers ──────────────────────────────────────────────────── */
+function serializeMarker(m) {
+  return {
+    id: m.id, name: m.name, description: m.description,
+    category: m.category, riskLevel: m.riskLevel,
+    latitude: m.latitude, longitude: m.longitude,
+    enabled: m.enabled, createdAt: m.createdAt,
+  }
+}
+
+app.get('/api/markers', ...requirePermission('ops'), async (req, res) => {
+  try {
+    const rows = await db.select().from(markers).orderBy(markers.createdAt)
+    res.json(rows.map(serializeMarker))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/markers', ...requirePermission('mapstudio'), async (req, res) => {
+  const { name, description, category, riskLevel, latitude, longitude } = req.body
+  if (!name?.trim())   return res.status(400).json({ error: 'name is required' })
+  if (latitude  == null) return res.status(400).json({ error: 'latitude is required' })
+  if (longitude == null) return res.status(400).json({ error: 'longitude is required' })
+  try {
+    const [m] = await db.insert(markers).values({
+      name: name.trim(), description: description?.trim() || null,
+      category: category ?? 'Other', riskLevel: riskLevel ?? 'low',
+      latitude, longitude,
+    }).returning()
+    trackEvent({ event: 'marker.created', description: `${req.caller.name} created marker "${m.name}"`, actorId: req.caller.id, subjectId: m.id })
+    res.json(serializeMarker(m))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/markers/:id', ...requirePermission('mapstudio'), async (req, res) => {
+  const { name, description, category, riskLevel, enabled } = req.body
+  try {
+    const [m] = await db.update(markers).set({
+      ...(name        !== undefined && { name: name.trim() }),
+      ...(description !== undefined && { description: description?.trim() || null }),
+      ...(category    !== undefined && { category }),
+      ...(riskLevel   !== undefined && { riskLevel }),
+      ...(enabled     !== undefined && { enabled }),
+      updatedAt: new Date(),
+    }).where(eq(markers.id, req.params.id)).returning()
+    if (!m) return res.status(404).json({ error: 'Marker not found' })
+    trackEvent({ event: 'marker.updated', description: `${req.caller.name} updated marker "${m.name}"`, actorId: req.caller.id, subjectId: m.id })
+    res.json(serializeMarker(m))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/markers/:id', ...requirePermission('mapstudio'), async (req, res) => {
+  try {
+    const [existing] = await db.select({ id: markers.id, name: markers.name }).from(markers).where(eq(markers.id, req.params.id)).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Marker not found' })
+    await db.delete(markers).where(eq(markers.id, req.params.id))
+    trackEvent({ event: 'marker.deleted', description: `${req.caller.name} deleted marker "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -1172,6 +1318,7 @@ app.post('/api/accounts/:accountId/plans', ...requirePermission('accounts'), asy
         ? db.insert(planLegs).values(legs.map((l, i) => buildLegValues(plan.id, l, i))).returning()
         : Promise.resolve([]),
     ])
+    trackEvent({ event: 'plan.created', description: `${req.caller.name} created plan "${plan.name}"`, actorId: req.caller.id, subjectId: plan.id })
     res.json(serializePlan(plan, insertedUnits, insertedLegs))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -1203,13 +1350,18 @@ app.patch('/api/accounts/:accountId/plans/:planId', ...requirePermission('accoun
               : [])
         : db.select().from(planLegs).where(eq(planLegs.planId, planId)).orderBy(planLegs.legOrder),
     ])
+    trackEvent({ event: 'plan.updated', description: `${req.caller.name} updated plan "${plan.name}"`, actorId: req.caller.id, subjectId: plan.id })
     res.json(serializePlan(plan, currentUnits, currentLegs))
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
 app.delete('/api/accounts/:accountId/plans/:planId', ...requirePermission('accounts'), async (req, res) => {
   try {
+    const [existing] = await db.select({ id: plans.id, name: plans.name }).from(plans)
+      .where(and(eq(plans.id, req.params.planId), eq(plans.accountId, req.params.accountId))).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Plan not found' })
     await db.delete(plans).where(and(eq(plans.id, req.params.planId), eq(plans.accountId, req.params.accountId)))
+    trackEvent({ event: 'plan.deleted', description: `${req.caller.name} deleted plan "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
     res.json({ ok: true })
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
@@ -1428,6 +1580,248 @@ app.patch('/api/client/principal/devices/:deviceId', authenticate, requireClient
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
+/* ── client places ────────────────────────────────────────────── */
+app.get('/api/client/places', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const rows = await db.select().from(places).where(eq(places.accountId, accountId)).orderBy(places.createdAt)
+    res.json(rows.map(serializePlace))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/client/places', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { name, address, mapboxId, latitude, longitude, radius, color } = req.body
+  if (!name?.trim())     return res.status(400).json({ error: 'name is required' })
+  if (latitude  == null) return res.status(400).json({ error: 'latitude is required' })
+  if (longitude == null) return res.status(400).json({ error: 'longitude is required' })
+  try {
+    const [p] = await db.insert(places).values({
+      accountId,
+      name: name.trim(), address, mapboxId,
+      latitude, longitude,
+      radius: radius ?? 150,
+      color:  color  ?? '#2563eb',
+    }).returning()
+
+    let traccarGeofenceId = null
+    try {
+      traccarGeofenceId = await upsertGeofenceForPlace(p)
+      await db.update(places).set({ traccarGeofenceId }).where(eq(places.id, p.id))
+      await linkGeofenceToAccountDevices(traccarGeofenceId, accountId)
+    } catch (err) {
+      console.warn('[places] Traccar sync failed (place saved without sync):', err.message)
+    }
+
+    res.json(serializePlace({ ...p, traccarGeofenceId }))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/client/places/:placeId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { name, address, mapboxId, latitude, longitude, radius, color } = req.body
+  try {
+    const [p] = await db.update(places).set({
+      ...(name      !== undefined && { name: name.trim() }),
+      ...(address   !== undefined && { address }),
+      ...(mapboxId  !== undefined && { mapboxId }),
+      ...(latitude  !== undefined && { latitude }),
+      ...(longitude !== undefined && { longitude }),
+      ...(radius    !== undefined && { radius }),
+      ...(color     !== undefined && { color }),
+      updatedAt: new Date(),
+    }).where(and(eq(places.id, req.params.placeId), eq(places.accountId, accountId))).returning()
+    if (!p) return res.status(404).json({ error: 'Place not found' })
+
+    const geofenceAffected = name !== undefined || latitude !== undefined || longitude !== undefined || radius !== undefined
+    if (geofenceAffected) {
+      try {
+        const traccarGeofenceId = await upsertGeofenceForPlace(p)
+        if (!p.traccarGeofenceId) {
+          await db.update(places).set({ traccarGeofenceId }).where(eq(places.id, p.id))
+          await linkGeofenceToAccountDevices(traccarGeofenceId, accountId)
+          p.traccarGeofenceId = traccarGeofenceId
+        }
+      } catch (err) {
+        console.warn('[places] Traccar re-sync failed:', err.message)
+      }
+    }
+
+    res.json(serializePlace(p))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/client/places/:placeId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const [existing] = await db.select().from(places)
+      .where(and(eq(places.id, req.params.placeId), eq(places.accountId, accountId)))
+      .limit(1)
+    if (!existing) return res.status(404).json({ error: 'Place not found' })
+
+    if (existing.traccarGeofenceId) {
+      try {
+        await deleteGeofence(existing.traccarGeofenceId)
+      } catch (err) {
+        console.warn('[places] Traccar delete failed:', err.message)
+      }
+    }
+
+    await db.delete(places).where(eq(places.id, req.params.placeId))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+/* ── client plans ─────────────────────────────────────────────── */
+app.get('/api/client/plans', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const rows = await db.select().from(plans).where(eq(plans.accountId, accountId))
+    if (rows.length === 0) return res.json([])
+
+    const planIds = rows.map(p => p.id)
+    const [unitRows, legRows] = await Promise.all([
+      db.select().from(planUnits).where(inArray(planUnits.planId, planIds)),
+      db.select().from(planLegs).where(inArray(planLegs.planId, planIds)).orderBy(planLegs.legOrder),
+    ])
+
+    // Resolve place names for all legs in one query
+    const placeIds = [...new Set(
+      legRows.flatMap(l => [l.originPlaceId, l.destinationPlaceId].filter(Boolean))
+    )]
+    const placeRows = placeIds.length
+      ? await db.select({ id: places.id, name: places.name }).from(places).where(inArray(places.id, placeIds))
+      : []
+    const placeMap = new Map(placeRows.map(p => [p.id, p.name]))
+
+    const byPlanUnits = new Map()
+    const byPlanLegs  = new Map()
+    for (const u of unitRows) {
+      if (!byPlanUnits.has(u.planId)) byPlanUnits.set(u.planId, [])
+      byPlanUnits.get(u.planId).push(u)
+    }
+    for (const l of legRows) {
+      if (!byPlanLegs.has(l.planId)) byPlanLegs.set(l.planId, [])
+      byPlanLegs.get(l.planId).push(l)
+    }
+
+    res.json(rows.map(p => ({
+      ...serializePlan(p, byPlanUnits.get(p.id) ?? [], []),
+      legs: (byPlanLegs.get(p.id) ?? []).map(l => ({
+        ...serializeLeg(l),
+        originPlaceName:      l.originPlaceId      ? (placeMap.get(l.originPlaceId)      ?? null) : null,
+        destinationPlaceName: l.destinationPlaceId ? (placeMap.get(l.destinationPlaceId) ?? null) : null,
+      })),
+    })))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/client/plans', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { name, type, enabled, notes, units = [], legs = [] } = req.body
+  if (!name?.trim())  return res.status(400).json({ error: 'name is required' })
+  if (!units.length)  return res.status(400).json({ error: 'at least one unit is required' })
+  try {
+    // Verify all specified units belong to this account
+    const principalUnitIds = units.filter(u => u.unitType === 'principal').map(u => u.unitId)
+    const vehicleUnitIds   = units.filter(u => u.unitType === 'vehicle').map(u => u.unitId)
+    const [validPrincipals, validVehicles] = await Promise.all([
+      principalUnitIds.length
+        ? db.select({ id: principals.id }).from(principals)
+            .where(and(inArray(principals.id, principalUnitIds), eq(principals.accountId, accountId)))
+        : Promise.resolve([]),
+      vehicleUnitIds.length
+        ? db.select({ id: vehicles.id }).from(vehicles)
+            .where(and(inArray(vehicles.id, vehicleUnitIds), eq(vehicles.accountId, accountId)))
+        : Promise.resolve([]),
+    ])
+    const validIds = new Set([...validPrincipals.map(r => r.id), ...validVehicles.map(r => r.id)])
+    if ([...principalUnitIds, ...vehicleUnitIds].some(id => !validIds.has(id))) {
+      return res.status(400).json({ error: 'One or more units do not belong to your account' })
+    }
+
+    const [plan] = await db.insert(plans).values({
+      accountId,
+      name:    name.trim(),
+      type:    type    ?? 'recurring',
+      enabled: enabled !== false,
+      notes:   notes   ?? null,
+    }).returning()
+
+    const [insertedUnits, insertedLegs] = await Promise.all([
+      db.insert(planUnits).values(units.map(u => ({ planId: plan.id, unitId: u.unitId, unitType: u.unitType }))).returning(),
+      legs.length > 0
+        ? db.insert(planLegs).values(legs.map((l, i) => buildLegValues(plan.id, l, i))).returning()
+        : Promise.resolve([]),
+    ])
+    res.json(serializePlan(plan, insertedUnits, insertedLegs))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/client/plans/:planId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { planId } = req.params
+  const { name, type, enabled, notes, units, legs } = req.body
+  try {
+    const [plan] = await db.update(plans).set({
+      ...(name    !== undefined && { name: name.trim() }),
+      ...(type    !== undefined && { type }),
+      ...(enabled !== undefined && { enabled }),
+      ...(notes   !== undefined && { notes }),
+      updatedAt: new Date(),
+    }).where(and(eq(plans.id, planId), eq(plans.accountId, accountId))).returning()
+    if (!plan) return res.status(404).json({ error: 'Plan not found' })
+
+    if (units !== undefined && units.length > 0) {
+      const principalUnitIds = units.filter(u => u.unitType === 'principal').map(u => u.unitId)
+      const vehicleUnitIds   = units.filter(u => u.unitType === 'vehicle').map(u => u.unitId)
+      const [validPrincipals, validVehicles] = await Promise.all([
+        principalUnitIds.length
+          ? db.select({ id: principals.id }).from(principals)
+              .where(and(inArray(principals.id, principalUnitIds), eq(principals.accountId, accountId)))
+          : Promise.resolve([]),
+        vehicleUnitIds.length
+          ? db.select({ id: vehicles.id }).from(vehicles)
+              .where(and(inArray(vehicles.id, vehicleUnitIds), eq(vehicles.accountId, accountId)))
+          : Promise.resolve([]),
+      ])
+      const validIds = new Set([...validPrincipals.map(r => r.id), ...validVehicles.map(r => r.id)])
+      if ([...principalUnitIds, ...vehicleUnitIds].some(id => !validIds.has(id))) {
+        return res.status(400).json({ error: 'One or more units do not belong to your account' })
+      }
+    }
+
+    const [currentUnits, currentLegs] = await Promise.all([
+      units !== undefined
+        ? db.delete(planUnits).where(eq(planUnits.planId, planId))
+            .then(() => units.length > 0
+              ? db.insert(planUnits).values(units.map(u => ({ planId, unitId: u.unitId, unitType: u.unitType }))).returning()
+              : [])
+        : db.select().from(planUnits).where(eq(planUnits.planId, planId)),
+      legs !== undefined
+        ? db.delete(planLegs).where(eq(planLegs.planId, planId))
+            .then(() => legs.length > 0
+              ? db.insert(planLegs).values(legs.map((l, i) => buildLegValues(planId, l, i))).returning()
+              : [])
+        : db.select().from(planLegs).where(eq(planLegs.planId, planId)).orderBy(planLegs.legOrder),
+    ])
+    res.json(serializePlan(plan, currentUnits, currentLegs))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/client/plans/:planId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const [existing] = await db.select({ id: plans.id }).from(plans)
+      .where(and(eq(plans.id, req.params.planId), eq(plans.accountId, accountId)))
+      .limit(1)
+    if (!existing) return res.status(404).json({ error: 'Plan not found' })
+
+    await db.delete(plans).where(eq(plans.id, req.params.planId))
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
 /* ── operator live feed ───────────────────────────────────────── */
 app.get('/api/live', authenticate, (req, res) => {
   res.setHeader('Content-Type',       'text/event-stream')
@@ -1456,7 +1850,7 @@ app.get('/api/traccar/devices', async (req, res) => {
   }
 })
 
-app.get('/api/triggers', ...requirePermission('admin'), async (req, res) => {
+app.get('/api/triggers', ...requirePermission('triggers'), async (req, res) => {
   try {
     const rows = await db.select().from(triggers).orderBy(triggers.triggerType, triggers.severity)
     res.json(rows)
@@ -1466,7 +1860,7 @@ app.get('/api/triggers', ...requirePermission('admin'), async (req, res) => {
   }
 })
 
-app.patch('/api/triggers/:id', ...requirePermission('admin'), async (req, res) => {
+app.patch('/api/triggers/:id', ...requirePermission('triggers'), async (req, res) => {
   const { name, severity, unitType, source, enabled, cooldownSeconds, conditions } = req.body
   console.log('[PATCH /api/triggers/:id] body:', req.body)
   try {
@@ -1484,6 +1878,7 @@ app.patch('/api/triggers/:id', ...requirePermission('admin'), async (req, res) =
       .where(eq(triggers.id, req.params.id))
       .returning()
     if (!updated) return res.status(404).json({ error: 'Trigger not found' })
+    trackEvent({ event: 'trigger.updated', description: `${req.caller.name} updated trigger "${updated.name}"`, actorId: req.caller.id, subjectId: updated.id })
     res.json(updated)
     loadTriggerCache().catch(err => console.error('[triggerEngine] reload after patch failed:', err.message))
   } catch (err) {
@@ -1492,7 +1887,7 @@ app.patch('/api/triggers/:id', ...requirePermission('admin'), async (req, res) =
   }
 })
 
-app.get('/api/triggers/for-unit', ...requirePermission('admin'), async (req, res) => {
+app.get('/api/triggers/for-unit', ...requirePermission('triggers'), async (req, res) => {
   const { unitId, unitType } = req.query
   if (!unitId || !unitType) return res.status(400).json({ error: 'unitId and unitType required' })
   try {
@@ -1512,12 +1907,19 @@ app.get('/api/triggers/for-unit', ...requirePermission('admin'), async (req, res
   }
 })
 
-app.post('/api/trigger-units', ...requirePermission('admin'), async (req, res) => {
+app.post('/api/trigger-units', ...requirePermission('triggers'), async (req, res) => {
   const { triggerId, unitId, unitType } = req.body
   if (!triggerId || !unitId || !unitType) return res.status(400).json({ error: 'triggerId, unitId, unitType required' })
   try {
     await db.insert(triggerUnits).values({ triggerId, unitId, unitType }).onConflictDoNothing()
     refreshUnitInCache(unitId).catch(err => console.error('[triggerEngine] refresh failed:', err.message))
+    const [trig, unit] = await Promise.all([
+      db.select({ name: triggers.name }).from(triggers).where(eq(triggers.id, triggerId)).limit(1),
+      unitType === 'principal'
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, unitId)).limit(1)
+        : db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, unitId)).limit(1),
+    ])
+    trackEvent({ event: 'trigger.unit_assigned', description: `${req.caller.name} assigned trigger "${trig[0]?.name}" to "${unit[0]?.name}"`, actorId: req.caller.id, subjectId: triggerId })
     res.json({ ok: true })
   } catch (err) {
     console.error(err)
@@ -1525,13 +1927,22 @@ app.post('/api/trigger-units', ...requirePermission('admin'), async (req, res) =
   }
 })
 
-app.delete('/api/trigger-units', ...requirePermission('admin'), async (req, res) => {
-  const { triggerId, unitId } = req.body
+app.delete('/api/trigger-units', ...requirePermission('triggers'), async (req, res) => {
+  const { triggerId, unitId, unitType } = req.body
   if (!triggerId || !unitId) return res.status(400).json({ error: 'triggerId and unitId required' })
   try {
     await db.delete(triggerUnits)
       .where(and(eq(triggerUnits.triggerId, triggerId), eq(triggerUnits.unitId, unitId)))
     refreshUnitInCache(unitId).catch(err => console.error('[triggerEngine] refresh failed:', err.message))
+    const [trig, unit] = await Promise.all([
+      db.select({ name: triggers.name }).from(triggers).where(eq(triggers.id, triggerId)).limit(1),
+      unitType === 'principal'
+        ? db.select({ name: principals.name }).from(principals).where(eq(principals.id, unitId)).limit(1)
+        : unitType === 'vehicle'
+          ? db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, unitId)).limit(1)
+          : Promise.resolve([]),
+    ])
+    trackEvent({ event: 'trigger.unit_unassigned', description: `${req.caller.name} unassigned trigger "${trig[0]?.name}" from "${unit[0]?.name}"`, actorId: req.caller.id, subjectId: triggerId })
     res.json({ ok: true })
   } catch (err) {
     console.error(err)
@@ -1541,7 +1952,7 @@ app.delete('/api/trigger-units', ...requirePermission('admin'), async (req, res)
 
 // ── alerts ─────────────────────────────────────────────────────────────────
 
-app.get('/api/alerts/active', ...requirePermission('ops'), async (req, res) => {
+app.get('/api/alerts/active', ...requirePermission('alerts'), async (req, res) => {
   try {
     const rows = await db.select({
       ...getTableColumns(alerts),
@@ -1566,7 +1977,7 @@ app.get('/api/alerts/active', ...requirePermission('ops'), async (req, res) => {
   }
 })
 
-app.get('/api/alerts', ...requirePermission('ops'), async (req, res) => {
+app.get('/api/alerts', ...requirePermission('alerts'), async (req, res) => {
   const { status, severity, unitType, simulation, from, to, limit = 200, offset = 0 } = req.query
   try {
     const conditions = []
@@ -1603,7 +2014,7 @@ app.get('/api/alerts', ...requirePermission('ops'), async (req, res) => {
   }
 })
 
-app.patch('/api/alerts/:id', ...requirePermission('ops'), async (req, res) => {
+app.patch('/api/alerts/:id', ...requirePermission('alerts'), async (req, res) => {
   const { status, notes } = req.body
   const now = new Date()
   try {
@@ -1635,7 +2046,7 @@ app.patch('/api/alerts/:id', ...requirePermission('ops'), async (req, res) => {
 
 // ── dev / simulation endpoints ─────────────────────────────────────────────
 
-app.get('/api/dev/simulatable-units', ...requirePermission('admin'), async (req, res) => {
+app.get('/api/dev/simulatable-units', ...requirePermission('testing'), async (req, res) => {
   try {
     const devRows = await db.select({
       traccarDeviceId: devices.traccarDeviceId,
@@ -1675,7 +2086,7 @@ app.get('/api/dev/simulatable-units', ...requirePermission('admin'), async (req,
   }
 })
 
-app.post('/api/dev/simulate-positions', ...requirePermission('admin'), async (req, res) => {
+app.post('/api/dev/simulate-positions', ...requirePermission('testing'), async (req, res) => {
   const { positions } = req.body
   if (!Array.isArray(positions) || positions.length === 0)
     return res.status(400).json({ error: 'positions array required' })

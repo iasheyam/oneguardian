@@ -56,12 +56,16 @@ const GEO_TYPE_META = {
 }
 
 const ALL_PERMISSIONS = [
-  { key: 'ops',      label: 'Ops',      desc: 'Access to the live operations map' },
-  { key: 'units',    label: 'Units',    desc: 'View and manage tracked units' },
-  { key: 'feed',     label: 'Feed',     desc: 'Access to the event and alert feed' },
-  { key: 'accounts', label: 'Accounts', desc: 'Manage client accounts and resources' },
-  { key: 'logs',     label: 'Logs',     desc: 'View audit and activity logs' },
-  { key: 'admin',    label: 'Admin',    desc: 'Access to settings and organization management' },
+  { key: 'ops',        label: 'Ops',        desc: 'Live operations map and fleet overview'       },
+  { key: 'units',      label: 'Units',      desc: 'View principal and vehicle detail pages'      },
+  { key: 'feed',       label: 'Feed',       desc: 'Access to live camera feeds'                  },
+  { key: 'accounts',   label: 'Accounts',   desc: 'Manage client accounts, units, and resources' },
+  { key: 'logs',       label: 'Logs',       desc: 'View audit and activity logs'                 },
+  { key: 'alerts',     label: 'Alerts',     desc: 'View and manage fired alerts'                 },
+  { key: 'triggers',   label: 'Triggers',   desc: 'Configure alert triggers and rules'           },
+  { key: 'testing',    label: 'Testing',    desc: 'Run simulation tests through the pipeline'    },
+  { key: 'mapstudio',  label: 'Map Studio', desc: 'Draw and manage risk zones and map markers'   },
+  { key: 'admin',      label: 'Admin',      desc: 'Organization settings and member management'  },
 ]
 
 const SECTIONS = [

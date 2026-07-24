@@ -25,7 +25,7 @@ B2B. Clients are onboarded by internal Telematics Guardian staff — not self-se
 - **Database**: PostgreSQL on AWS RDS, Drizzle ORM
 - **Auth**: AWS Cognito (invite-only, no self-signup), JWT via Authorization header
 - **Tracking**: Traccar server (self-hosted), WebSocket feed → position cache → trigger engine
-- **Maps**: Mapbox (`react-map-gl/mapbox`, dark-v11 style), token at `VITE_MAPBOX_TOKEN`. Used in live map, unit detail, and place/plan forms. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for geocoding/POI search — Mapbox renders, Google searches.
+- **Maps**: Mapbox (`react-map-gl/mapbox`, dark-v11 style), token at `VITE_MAPBOX_TOKEN`. Used in live map, unit detail, and place/plan forms. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for geocoding/POI search — Mapbox renders, Google searches. Also used for reverse geocoding (`reverseGeocode`) and timezone lookup (`getTimezoneId`) in `src/shared/utils/googlePlaces.js` — drives the unit detail live tab.
 - **Real-time**: SSE via `/api/live` endpoint, shared `server/sse.js` broadcast module
 - **Storage**: AWS S3 (photos, logos)
 - **Migrations**: Direct SQL via Node.js scripts (drizzle-kit has TTY issues in this env)
@@ -165,6 +165,13 @@ Two separate channels in `server/sse.js`. Avoids circular dependency between `tr
 - `clientsByAccount` (Map of accountId → Set) — `/api/client/live`, receives positions and alerts scoped to that account only
 - Message types: `snapshot`, `positions`, `alert`
 
+### Map controls (`src/modules/admin/components/MapControls.jsx`)
+Centralized overlay rendered inside every `<Map>` as a child. Uses `useMap()` hook — no `mapRef` prop needed.
+- Groups: MAP/SAT style toggle · +/− zoom · Police/Hospital POI overlays (Overpass API, 6km radius around current center)
+- Exports: `MAP_STYLES` (the two Mapbox style URLs), `UpuRow` (popup row helper also used by Dashboard unit popup)
+- POI state is entirely internal; parents only hold `[mapStyle, setMapStyle]` and pass `mapStyle={MAP_STYLES[mapStyle]}` to `<Map>` and `<MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />` inside it
+- Used in: Dashboard, MapStudio, PrincipalDetail, VehicleDetail
+
 ### Client API (`/api/client/` prefix)
 For the mobile app. All routes require a valid JWT **and** a principal linked to the caller (`principals.userId = caller.id`). Returns `403` if not linked.
 - `GET /api/client/account` — account info + flat unit roster
@@ -179,18 +186,22 @@ For the mobile app. All routes require a valid JWT **and** a principal linked to
 - `authenticate` middleware: validates Cognito JWT, attaches `req.caller`
 - `requirePermission(perm)`: checks caller's role permissions
 - `requireClientPrincipal`: async middleware, looks up `principals.userId = caller.id`, attaches `req.clientPrincipal { id, accountId }`
-- Permission keys: `ops`, `units`, `feed`, `accounts`, `logs`, `admin`
+- Permission keys (one per nav item): `ops`, `units`, `feed`, `accounts`, `logs`, `alerts`, `triggers`, `testing`, `mapstudio`, `admin`
+- System roles: **Admin** has all 10; **Operator** has `ops`, `units`, `feed`, `alerts`
+- Route-level: alert routes require `alerts`; trigger routes require `triggers`; dev/sim routes require `testing`; zone/marker mutations require `mapstudio` (reads stay at `ops`)
 
 ## Key pages
 
-- **OPS** (`/admin/ops`) — live map, fleet status
-- **UNIT** — principal and vehicle detail views
-- **ACCTS** — account management (create accounts, manage principals, vehicles, groups, devices, places, plans)
-- **LOGS** — activity audit log
-- **ALRT** — alert management (acknowledge, resolve, filter by simulation vs real)
-- **TRIG** — trigger configuration (CRUD, enable/disable, edit conditions)
-- **TEST** — simulation testing (send fake positions through the real pipeline, marked `isSimulation: true`)
-- **ADMIN** — org settings, members, roles
+- **OPS** (`ops`) — live map, fleet status; auto-centers on live unit concentration at load
+- **UNIT** (`units`) — principal/vehicle detail; live tab: reverse-geocoded address, local time, speed, motion, battery (left) + position data grid (right)
+- **FEED** (`feed`) — live camera feeds
+- **ACCTS** (`accounts`) — account management (principals, vehicles, groups, devices, places, plans)
+- **LOGS** (`logs`) — activity audit log
+- **ALRT** (`alerts`) — alert management (acknowledge, resolve, filter simulation vs real)
+- **TRIG** (`triggers`) — trigger configuration (CRUD, enable/disable, edit conditions)
+- **TEST** (`testing`) — simulation testing (fake positions through real pipeline, `isSimulation: true`)
+- **MAP** (`mapstudio`) — Map Studio: draw/manage global risk zones and account markers
+- **ADMIN** (`admin`) — org settings, members, roles
 
 ## Pending design decisions
 

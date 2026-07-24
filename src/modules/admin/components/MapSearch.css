@@ -128,36 +128,3 @@
 }
 
 /* ── Map style toggle ─────────────────── */
-.map-style-toggle {
-  position: absolute;
-  bottom: 34px;
-  left: 12px;
-  display: flex;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(10, 14, 18, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  z-index: 10;
-}
-
-.mst-btn {
-  padding: 5px 12px;
-  font-family: var(--adm-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.4);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.12s, background 0.12s;
-}
-
-.mst-btn:hover:not(.active) { color: rgba(255, 255, 255, 0.75); }
-
-.mst-btn.active {
-  background: rgba(255, 255, 255, 0.13);
-  color: #fff;
-}

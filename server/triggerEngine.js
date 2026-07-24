@@ -3,6 +3,7 @@ import { triggers, triggerUnits, alerts } from '../db/schema/alerts.js'
 import { devices, principals, vehicles } from '../db/schema/accounts.js'
 import { eq, and, isNotNull, inArray, sql } from 'drizzle-orm'
 import { broadcast, broadcastToAccount } from './sse.js'
+import { trackEvent } from './trackEvent.js'
 
 // ── trigger cache ──────────────────────────────────────────────────────────
 // Map: traccarDeviceId (number) → { unitId, unitType, accountId, triggers[] }
@@ -140,6 +141,13 @@ async function persistAlert(trigger, unitId, unitType, pos, isSimulation = false
     broadcast({ type: 'alert', alert: alertPayload })
     const accountId = unitAccountCache.get(unitId)
     if (accountId) broadcastToAccount(accountId, { type: 'alert', alert: alertPayload })
+
+    if (!isSimulation) {
+      const [unit] = unitType === 'principal'
+        ? await db.select({ name: principals.name }).from(principals).where(eq(principals.id, unitId)).limit(1)
+        : await db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, unitId)).limit(1)
+      trackEvent({ event: 'alert.fired', description: `${trigger.name} fired for "${unit?.name ?? unitId}"`, subjectId: alert.id, metadata: { triggerId: trigger.id, unitId, unitType, severity: trigger.severity } })
+    }
   } catch (err) {
     console.error('[triggerEngine] persistAlert failed:', err.message)
   }

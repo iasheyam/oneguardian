@@ -18,14 +18,20 @@ The token can also be passed as a query param `?token=<jwt>` for endpoints that 
 ### Permission system
 Permissions are attached to **roles**. Each operator user has one role. Roles define which permissions are granted.
 
-| Permission | Controls access to |
-|------------|-------------------|
-| `ops`      | Live map, alerts (view/acknowledge/resolve) |
-| `units`    | Principal and vehicle detail views |
-| `feed`     | Activity feed |
-| `accounts` | Account CRUD, principal/vehicle/device management |
-| `logs`     | Activity log |
-| `admin`    | Members, roles, triggers, simulation, user scope assignments |
+| Permission   | Controls access to |
+|--------------|-------------------|
+| `ops`        | Live operations map, zones/markers read, fleet overview |
+| `units`      | Principal and vehicle detail views |
+| `feed`       | Activity feed |
+| `accounts`   | Account CRUD, principal/vehicle/device/place/plan management |
+| `logs`       | Activity log |
+| `alerts`     | View, acknowledge, and resolve fired alerts |
+| `triggers`   | View and configure alert triggers and rules |
+| `testing`    | Run simulation tests through the trigger pipeline |
+| `mapstudio`  | Draw and manage risk zones, map markers (mutations only) |
+| `admin`      | Members, roles, user scope assignments |
+
+System roles: **Admin** has all 10. **Operator** has `ops`, `units`, `feed`, `alerts`.
 
 ---
 
@@ -363,15 +369,18 @@ Groups are named subsets of units within an account, used for organizing large c
 
 ### Places
 
-Named, geolocated places at the account level. Used as reusable locations for plan legs and (eventually) geofence triggers. Coordinates come from Mapbox search — the client resolves the search result to lat/lng before sending.
+Named, geolocated places at the account level. Used as reusable locations for plan legs and geofence triggers. Coordinates are resolved via **Google Places API (New)** on the client before sending.
+
+Places are automatically synced to Traccar as `CIRCLE` geofences when created or updated. Devices in the same account are auto-linked to the Traccar geofence.
 
 #### `GET /api/accounts/:accountId/places`
 **Permission:** `accounts` — returns all places for the account.
 
 **Response**
 ```json
-[{ "id": "uuid", "name": "School", "address": "Lincoln High School, Los Angeles, CA", "mapboxId": "place.abc123", "latitude": 34.05, "longitude": -118.25, "radius": 150, "color": "#2563eb" }]
+[{ "id": "uuid", "name": "School", "address": "Lincoln High School, Los Angeles, CA", "mapboxId": "place.abc123", "latitude": 34.05, "longitude": -118.25, "radius": 150, "color": "#2563eb", "synced": true }]
 ```
+`synced: true` means a Traccar geofence exists for this place.
 
 #### `POST /api/accounts/:accountId/places`
 **Permission:** `accounts`
@@ -380,10 +389,10 @@ Named, geolocated places at the account level. Used as reusable locations for pl
 ```json
 {
   "name":      "School",                              // required
-  "latitude":  34.0522,                               // required — resolved by Mapbox on the client
+  "latitude":  34.0522,                               // required — resolved by Google Places on the client
   "longitude": -118.2437,                             // required
-  "address":   "Lincoln High School, Los Angeles, CA",// optional — human-readable from Mapbox
-  "mapboxId":  "place.abc123",                        // optional — Mapbox feature ID
+  "address":   "Lincoln High School, Los Angeles, CA",// optional — human-readable
+  "mapboxId":  "place.abc123",                        // optional — Google Places ID (stored for reference)
   "radius":    150,                                   // optional — metres, default 150
   "color":     "#2563eb"                              // optional — default blue
 }
@@ -396,6 +405,56 @@ Named, geolocated places at the account level. Used as reusable locations for pl
 
 #### `DELETE /api/accounts/:accountId/places/:placeId`
 **Permission:** `accounts`
+
+---
+
+---
+
+### Zones
+
+Global geofenced risk areas. Not account-scoped — zones apply to all tracked units. Drawn in Map Studio. Automatically synced to Traccar as POLYGON/MULTIPOLYGON geofences. All registered devices are auto-linked on zone creation; new devices are auto-linked on registration.
+
+#### `GET /api/zones`
+**Permission:** `ops` — returns all zones.
+
+**Response**
+```json
+[{
+  "id":          "uuid",
+  "name":        "Downtown High Risk",
+  "description": "string | null",
+  "geometry":    { "type": "Polygon", "coordinates": [[...]] },
+  "riskLevel":   "low | medium | high | critical",
+  "enabled":     true,
+  "synced":      true,
+  "createdAt":   "iso-datetime",
+  "updatedAt":   "iso-datetime"
+}]
+```
+`synced: true` means a Traccar geofence exists for this zone.
+
+#### `POST /api/zones`
+**Permission:** `mapstudio`
+
+**Body**
+```json
+{
+  "name":        "Downtown High Risk",  // required
+  "geometry":    { "type": "Polygon", "coordinates": [[...]] },  // required — GeoJSON Polygon or MultiPolygon
+  "riskLevel":   "high",               // optional — "low" | "medium" | "high" | "critical", default "low"
+  "description": "string"              // optional
+}
+```
+
+**Response** — zone object as above.
+
+#### `PATCH /api/zones/:id`
+**Permission:** `mapstudio` — all fields optional. Re-syncs Traccar geofence if `name` or `geometry` changes.
+
+Also accepts `"enabled": false` to disable the zone without deleting it.
+
+#### `DELETE /api/zones/:id`
+**Permission:** `mapstudio` — removes the Traccar geofence (which cascades device-link removal in Traccar) then deletes the DB record.
 
 ---
 
@@ -413,14 +472,15 @@ Plans define expected schedules or trips for a specific unit within an account. 
 ```json
 [{
   "id":        "uuid",
-  "unitId":    "uuid",
-  "unitType":  "principal",
   "name":      "School Run",
   "type":      "recurring",
   "enabled":   true,
   "notes":     null,
   "createdAt": "2026-01-01T00:00:00Z",
   "updatedAt": "2026-01-01T00:00:00Z",
+  "units": [
+    { "unitId": "uuid", "unitType": "principal" }
+  ],
   "legs": [{
     "id":                  "uuid",
     "legOrder":            0,
@@ -441,12 +501,13 @@ Plans define expected schedules or trips for a specific unit within an account. 
 **Body**
 ```json
 {
-  "unitId":   "uuid",         // required
-  "unitType": "principal",    // required — "principal" | "vehicle"
-  "name":     "School Run",   // required
-  "type":     "recurring",    // optional — "recurring" | "one_time", default "recurring"
-  "enabled":  true,           // optional — default true
-  "notes":    null,           // optional
+  "name":     "School Run",    // required
+  "type":     "recurring",     // optional — "recurring" | "one_time", default "recurring"
+  "enabled":  true,            // optional — default true
+  "notes":    null,            // optional
+  "units": [                   // required — at least one
+    { "unitId": "uuid", "unitType": "principal | vehicle" }
+  ],
   "legs": [{
     "legOrder":            0,       // optional — defaults to array index
     "originPlaceId":       "uuid",  // optional
@@ -550,18 +611,22 @@ GET /api/live?token=<jwt>
   "alert": {
     "id": "uuid",
     "triggerId": "uuid",
-    "triggerName": "Speed Limit",
-    "triggerType": "speed",
+    "triggerName": "High Risk Zone Entry",
+    "triggerType": "zone_entry | zone_exit | speed | panic_button | ...",
     "unitId": "uuid",
     "unitType": "vehicle | principal",
+    "unitName": "string | null",
     "severity": "red_alert | warning | advisory",
     "status": "active",
     "position": { "speed": 120, "latitude": 25.1, "longitude": 55.5, "attributes": {} },
     "isSimulation": false,
-    "firedAt": "iso-datetime"
+    "firedAt": "iso-datetime",
+    "zoneName": "Downtown High Risk",
+    "zoneRiskLevel": "high"
   }
 }
 ```
+`zoneName` and `zoneRiskLevel` are only present on `zone_entry`/`zone_exit` alerts. `unitName` is included in geofence alerts; may be `null` on position-trigger alerts fired via SSE.
 
 > **Note:** This endpoint currently broadcasts all positions to all connected clients with no account filtering. Account-scoped filtering is planned as part of the `/api/client/live` endpoint.
 
@@ -570,10 +635,10 @@ GET /api/live?token=<jwt>
 ### Triggers
 
 #### `GET /api/triggers`
-**Permission:** `admin` — all triggers.
+**Permission:** `triggers` — all triggers.
 
 #### `PATCH /api/triggers/:id`
-**Permission:** `admin`
+**Permission:** `triggers`
 
 **Body**
 ```json
@@ -590,29 +655,29 @@ GET /api/live?token=<jwt>
 `cooldownSeconds: null` uses the system default (15 min). `cooldownSeconds: 0` fires every time with no cooldown.
 
 #### `GET /api/triggers/for-unit?unitId=&unitType=`
-**Permission:** `admin` — returns triggers assigned to a specific unit (universal + explicit assignments).
+**Permission:** `triggers` — returns triggers assigned to a specific unit (universal + explicit assignments).
 
 #### `POST /api/trigger-units`
-**Permission:** `admin` — assigns a trigger to a specific unit.
+**Permission:** `triggers` — assigns a trigger to a specific unit.
 
 **Body:** `{ "triggerId": "uuid", "unitId": "uuid" }`
 
 #### `DELETE /api/trigger-units`
-**Permission:** `admin` — same body as POST.
+**Permission:** `triggers` — same body as POST.
 
 ---
 
 ### Alerts
 
 #### `GET /api/alerts/active`
-**Permission:** `ops`
+**Permission:** `alerts`
 
 Returns all alerts with `status: active`. Used to seed the alert popup on dashboard load.
 
 **Response** — array of alert objects with `unitName`, `triggerName`, `triggerType` joined in.
 
 #### `GET /api/alerts`
-**Permission:** `ops`
+**Permission:** `alerts`
 
 **Query params**
 
@@ -651,7 +716,7 @@ Returns all alerts with `status: active`. Used to seed the alert popup on dashbo
 ```
 
 #### `PATCH /api/alerts/:id`
-**Permission:** `ops`
+**Permission:** `alerts`
 
 **Body:** `{ "status": "acknowledged | resolved | false_alarm", "notes": "string" }`
 
@@ -672,7 +737,7 @@ Historical position track for a device. No auth required. `from`/`to` are ISO da
 ### Dev / Simulation
 
 #### `GET /api/dev/simulatable-units`
-**Permission:** `admin` — returns all units that have a Traccar device ID assigned (can be simulated).
+**Permission:** `testing` — returns all units that have a Traccar device ID assigned (can be simulated).
 
 **Response**
 ```json
@@ -680,7 +745,7 @@ Historical position track for a device. No auth required. `from`/`to` are ISO da
 ```
 
 #### `POST /api/dev/simulate-positions`
-**Permission:** `admin`
+**Permission:** `testing`
 
 Runs the trigger engine against synthetic positions, marks any fired alerts as `isSimulation: true`.
 
@@ -914,3 +979,150 @@ Pass `null` to clear the primary device.
 - `404` — device not found or belongs to a different principal
 
 > **When to call this:** `POST /api/client/principal/devices` auto-promotes the new device if no primary exists yet. If the principal already has a primary device (e.g. a hardware GPS tracker), call this endpoint explicitly after registration to switch.
+
+---
+
+### Places
+
+Named, geolocated places scoped to the caller's account. The caller's account is resolved from their linked principal — no account ID in the URL. All place mutations trigger Traccar geofence sync automatically.
+
+**Place object shape**
+```json
+{
+  "id":        "uuid",
+  "name":      "Home",
+  "address":   "123 Main St, Dubai, UAE",
+  "mapboxId":  "place.abc123",
+  "latitude":  25.197,
+  "longitude": 55.274,
+  "radius":    150,
+  "color":     "#2563eb",
+  "synced":    true
+}
+```
+`synced: true` means a Traccar circular geofence exists for this place.
+
+#### `GET /api/client/places`
+**Auth:** authenticated + linked principal
+
+Returns all places in the caller's account.
+
+#### `POST /api/client/places`
+**Auth:** authenticated + linked principal
+
+**Body**
+```json
+{
+  "name":      "School",     // required
+  "latitude":  25.197,       // required — resolved by Google Places on the client
+  "longitude": 55.274,       // required
+  "address":   "string",     // optional — human-readable address
+  "mapboxId":  "string",     // optional — Google Places ID
+  "radius":    150,          // optional — metres, default 150
+  "color":     "#2563eb"     // optional — default blue
+}
+```
+
+**Response** — place object
+
+**Errors**
+- `400` — `name`, `latitude`, or `longitude` missing
+
+#### `PATCH /api/client/places/:placeId`
+**Auth:** authenticated + linked principal
+
+All fields optional. Only updates provided fields. Re-syncs the Traccar geofence if `name`, `latitude`, `longitude`, or `radius` changes.
+
+`404` if the place does not belong to the caller's account.
+
+#### `DELETE /api/client/places/:placeId`
+**Auth:** authenticated + linked principal
+
+Removes the Traccar geofence then deletes the place. `404` if not in caller's account.
+
+---
+
+### Plans
+
+Plans define expected schedules or trips for units within the caller's account. The caller can view and manage all plans in their account (e.g. a family member managing the household schedule).
+
+Units specified in `units[]` must belong to the caller's account — `400` otherwise.
+
+**Plan object shape (GET)**
+```json
+{
+  "id":        "uuid",
+  "name":      "School Run",
+  "type":      "recurring",
+  "enabled":   true,
+  "notes":     null,
+  "createdAt": "iso-datetime",
+  "updatedAt": "iso-datetime",
+  "units": [
+    { "unitId": "uuid", "unitType": "principal" }
+  ],
+  "legs": [{
+    "id":                   "uuid",
+    "legOrder":             0,
+    "originPlaceId":        "uuid | null",
+    "destinationPlaceId":   "uuid | null",
+    "originPlaceName":      "Home",
+    "destinationPlaceName": "School",
+    "daysOfWeek":           [1, 2, 3, 4, 5],
+    "windowStart":          "07:30",
+    "windowEnd":            "08:30",
+    "arrivalAt":            null,
+    "departureAt":          null
+  }]
+}
+```
+
+> **Place names in legs:** `originPlaceName` and `destinationPlaceName` are resolved and inlined by the server. This saves the mobile app a separate places lookup just to render leg labels.
+
+#### `GET /api/client/plans`
+**Auth:** authenticated + linked principal
+
+Returns all plans in the caller's account, with place names inlined in each leg.
+
+#### `POST /api/client/plans`
+**Auth:** authenticated + linked principal
+
+**Body**
+```json
+{
+  "name":    "School Run",  // required
+  "type":    "recurring",   // optional — "recurring" | "one_time", default "recurring"
+  "enabled": true,          // optional — default true
+  "notes":   null,          // optional
+  "units": [                // required — at least one; all must belong to caller's account
+    { "unitId": "uuid", "unitType": "principal | vehicle" }
+  ],
+  "legs": [{
+    "legOrder":            0,
+    "originPlaceId":       "uuid",
+    "destinationPlaceId":  "uuid",
+    "daysOfWeek":          [1,2,3,4,5],
+    "windowStart":         "07:30",
+    "windowEnd":           "08:30",
+    "arrivalAt":           null,
+    "departureAt":         null
+  }]
+}
+```
+
+**Response** — plan object (same shape as GET, without inlined place names)
+
+**Errors**
+- `400` — `name` missing, no units provided, or a unit doesn't belong to the account
+
+#### `PATCH /api/client/plans/:planId`
+**Auth:** authenticated + linked principal
+
+All top-level fields optional. If `units` or `legs` is provided, the existing set is **replaced entirely** with the new array. Omit them to leave them unchanged.
+
+`404` if the plan does not belong to the caller's account.
+
+#### `DELETE /api/client/plans/:planId`
+**Auth:** authenticated + linked principal
+
+Cascades to plan legs and unit assignments. `404` if not in caller's account.

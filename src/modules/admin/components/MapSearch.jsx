@@ -89,20 +89,6 @@ export function MapSearch({ onFlyTo, onPin }) {
   )
 }
 
-export function MapStyleToggle({ style, onChange }) {
-  return (
-    <div className="map-style-toggle">
-      <button
-        className={`mst-btn${style === 'dark' ? ' active' : ''}`}
-        onClick={() => onChange('dark')}
-      >MAP</button>
-      <button
-        className={`mst-btn${style === 'satellite' ? ' active' : ''}`}
-        onClick={() => onChange('satellite')}
-      >SAT</button>
-    </div>
-  )
-}
 
 export function SearchPinMarker({ onDismiss }) {
   return (

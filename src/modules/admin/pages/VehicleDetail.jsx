@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/mapbox'
+import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
 import { apiUrl, apiFetch } from '../../../shared/utils/api'
+import { MapControls, MAP_STYLES } from '../components/MapControls'
+import ZoneLayers from '../components/ZoneLayers'
+import MarkerPins from '../components/MarkerPins'
 import './UnitDetail.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -86,6 +89,7 @@ export default function VehicleDetail() {
   const attrs   = livePos?.attributes ?? {}
 
   const [tab,           setTab]           = useState('live')
+  const [mapStyle,      setMapStyle]      = useState('dark')
   const [routeCoords,   setRouteCoords]   = useState([])
   const [routeProgress, setRouteProgress] = useState(100)
   const [loadingRoute,  setLoadingRoute]  = useState(false)
@@ -222,19 +226,12 @@ export default function VehicleDetail() {
               </span>
             )}
           </div>
-          <div className="ud-header__meta">
-            {vehicle.plate      && <MetaItem label="Plate"   value={vehicle.plate} mono />}
-            {vehicle.armorLevel && <MetaItem label="Armor"   value={vehicle.armorLevel} />}
-            {account?.name      && <MetaItem label="Account" value={account.name} />}
-            {speed !== null     && <MetaItem label="Speed"   value={`${speed} KPH`} />}
-            {heading !== null   && <MetaItem label="Heading" value={`${Math.round(heading)}°`} />}
-          </div>
         </div>
       </div>
 
       {/* ── tabs ────────────────────────────────── */}
       <div className="ud-tabs">
-        {[['live', 'LIVE'], ['route', 'ROUTE HISTORY'], ['schedule', 'SCHEDULE'], ['devices', 'DEVICES']].map(([t, label]) => (
+        {[['live', 'LIVE'], ['route', 'ROUTE HISTORY'], ['schedule', 'SCHEDULE'], ['profile', 'PROFILE'], ['devices', 'DEVICES']].map(([t, label]) => (
           <button key={t} className={`ud-tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>
             {label}
           </button>
@@ -248,10 +245,12 @@ export default function VehicleDetail() {
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={lat && lng ? { latitude: lat, longitude: lng, zoom: 14 } : INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
+          mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
-          <NavigationControl position="bottom-right" showCompass={false} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <ZoneLayers />
+          <MarkerPins />
 
           {/* LIVE — position marker */}
           {tab === 'live' && lat && lng && (
@@ -296,6 +295,7 @@ export default function VehicleDetail() {
           {tab === 'live'     && (isLive ? 'LIVE POSITION' : 'NO SIGNAL')}
           {tab === 'route'    && 'ROUTE HISTORY'}
           {tab === 'schedule' && 'PLANNED SCHEDULE'}
+          {tab === 'profile'  && 'PROFILE'}
           {tab === 'devices'  && 'DEVICES'}
         </div>
 
@@ -369,6 +369,7 @@ export default function VehicleDetail() {
               <span className="ud-events-empty">No schedule assigned</span>
             </div>
           )}
+          {tab === 'profile'  && <VehicleProfileLeft vehicle={vehicle} />}
           {tab === 'devices' && <DevicesDetail devices={vehicle.devices ?? []} />}
         </div>
 
@@ -392,6 +393,7 @@ export default function VehicleDetail() {
               }
             </div>
           )}
+          {tab === 'profile'  && <VehicleProfileRight vehicle={vehicle} account={account} />}
           {tab === 'devices' && <DevicesRight devices={vehicle.devices ?? []} />}
         </div>
       </div>
@@ -466,11 +468,53 @@ function DeviceCard({ dev }) {
   )
 }
 
-function MetaItem({ label, value, mono }) {
+function VehicleProfileLeft({ vehicle }) {
   return (
-    <div className="ud-meta-item">
-      <span className="ud-meta-item__label">{label}</span>
-      <span className={`ud-meta-item__value${mono ? ' mono' : ''}`}>{value}</span>
+    <>
+      <ProfileSection title="VEHICLE">
+        {vehicle.plate      && <ProfileField label="Plate"       value={vehicle.plate} mono />}
+        {vehicle.make       && <ProfileField label="Make"        value={vehicle.make} />}
+        {vehicle.model      && <ProfileField label="Model"       value={vehicle.model} />}
+        {vehicle.year       && <ProfileField label="Year"        value={vehicle.year} />}
+        {vehicle.color      && <ProfileField label="Color"       value={vehicle.color} />}
+        {vehicle.armorLevel && <ProfileField label="Armor Level" value={vehicle.armorLevel} />}
+        {!vehicle.plate && !vehicle.make && <ProfileField label="—" value="No vehicle info on file" />}
+      </ProfileSection>
+    </>
+  )
+}
+
+function VehicleProfileRight({ vehicle, account }) {
+  return (
+    <>
+      <ProfileSection title="ASSIGNMENT">
+        {account?.name && <ProfileField label="Account" value={account.name} />}
+        {!account?.name && <ProfileField label="—" value="No account assigned" />}
+      </ProfileSection>
+    </>
+  )
+}
+
+function ProfileSection({ title, children }) {
+  return (
+    <div className="ud-section">
+      <span className="ud-section__title">{title}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px 20px' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ProfileField({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <span style={{ fontFamily: 'var(--adm-mono)', fontSize: '8.5px', fontWeight: 600, letterSpacing: '0.1em', color: 'var(--adm-text-dim)', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 13, lineHeight: 1.4, color: 'var(--adm-text-muted)', fontFamily: mono ? 'var(--adm-mono)' : undefined, letterSpacing: mono ? '0.04em' : undefined }}>
+        {value}
+      </span>
     </div>
   )
 }

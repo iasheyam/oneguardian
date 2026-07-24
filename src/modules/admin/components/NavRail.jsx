@@ -3,16 +3,16 @@ import { useAuth } from '../../auth/AuthContext'
 import './NavRail.css'
 
 const NAV_ITEMS = [
-  { key: 'dashboard',  label: 'OPS',      title: 'Live operations',       permKey: 'ops'      },
-  { key: 'unit',       label: 'UNIT',     title: 'Vehicle detail',        permKey: 'units'    },
-  { key: 'feed',       label: 'FEED',     title: 'Live camera feeds',     permKey: 'feed'     },
-  { key: 'accounts',   label: 'ACCTS',    title: 'Account management',    permKey: 'accounts' },
-  { key: 'logs',       label: 'LOGS',     title: 'Activity logs',         permKey: 'logs'     },
-  { key: 'alerts',     label: 'ALRT',     title: 'Alert management',      permKey: 'ops'      },
-  { key: 'triggers',   label: 'TRIG',     title: 'Alert triggers',        permKey: 'admin'    },
-  { key: 'testing',    label: 'TEST',     title: 'Simulation testing',    permKey: 'admin'    },
-  { key: 'mapstudio',  label: 'MAP',      title: 'Map Studio',            permKey: 'ops'      },
-  { key: 'admin',      label: 'ADMIN',    title: 'Organization settings', permKey: 'admin'    },
+  { key: 'dashboard',  label: 'OPS',      title: 'Live operations',       permKey: 'ops'       },
+  { key: 'unit',       label: 'UNIT',     title: 'Vehicle detail',        permKey: 'units'     },
+  { key: 'feed',       label: 'FEED',     title: 'Live camera feeds',     permKey: 'feed'      },
+  { key: 'accounts',   label: 'ACCTS',    title: 'Account management',    permKey: 'accounts'  },
+  { key: 'logs',       label: 'LOGS',     title: 'Activity logs',         permKey: 'logs'      },
+  { key: 'alerts',     label: 'ALRT',     title: 'Alert management',      permKey: 'alerts'    },
+  { key: 'triggers',   label: 'TRIG',     title: 'Alert triggers',        permKey: 'triggers'  },
+  { key: 'testing',    label: 'TEST',     title: 'Simulation testing',    permKey: 'testing'   },
+  { key: 'mapstudio',  label: 'MAP',      title: 'Map Studio',            permKey: 'mapstudio' },
+  { key: 'admin',      label: 'ADMIN',    title: 'Organization settings', permKey: 'admin'     },
 ]
 
 function OpsIcon()   { return <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden><rect x="0" y="0" width="6.5" height="6.5" rx="1.5"/><rect x="9.5" y="0" width="6.5" height="6.5" rx="1.5"/><rect x="0" y="9.5" width="6.5" height="6.5" rx="1.5"/><rect x="9.5" y="9.5" width="6.5" height="6.5" rx="1.5"/></svg> }

@@ -50,3 +50,24 @@ export function viewportToBbox(viewport) {
   const { low, high } = viewport
   return [low.longitude, low.latitude, high.longitude, high.latitude]
 }
+
+// Reverse geocode lat/lng → human-readable address string
+export async function reverseGeocode(lat, lng) {
+  const res  = await fetch(
+    `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${API_KEY}`
+  )
+  const data = await res.json()
+  if (data.status !== 'OK' || !data.results?.[0]) return null
+  return data.results[0].formatted_address
+}
+
+// Resolve IANA timezone ID from coordinates (e.g. "America/Guatemala")
+export async function getTimezoneId(lat, lng) {
+  const ts  = Math.floor(Date.now() / 1000)
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${ts}&key=${API_KEY}`
+  )
+  const data = await res.json()
+  if (data.status !== 'OK') return null
+  return data.timeZoneId
+}

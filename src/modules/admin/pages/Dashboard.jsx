@@ -1,18 +1,16 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Map, { Marker, Popup, NavigationControl, AttributionControl } from 'react-map-gl/mapbox'
+import Map, { Marker, Popup, AttributionControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
-import { MapSearch, MapStyleToggle, SearchPinMarker } from '../components/MapSearch'
+import { MapSearch, SearchPinMarker } from '../components/MapSearch'
+import { MapControls, MAP_STYLES, UpuRow } from '../components/MapControls'
+import ZoneLayers from '../components/ZoneLayers'
+import MarkerPins from '../components/MarkerPins'
 import './Dashboard.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-
-const MAP_STYLES = {
-  dark:      'mapbox://styles/mapbox/dark-v11',
-  satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
-}
 
 const STATUS_META = {
   normal:  { color: '#37C2B8', label: 'SECURE'  },
@@ -29,9 +27,18 @@ const FILTER_DEFS = [
 ]
 
 const INITIAL_VIEW = {
-  longitude: -90.5069,
-  latitude:  14.5980,
-  zoom:      12.5,
+  longitude: 0,
+  latitude:  20,
+  zoom:      1.8,
+}
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R  = 6371
+  const dL = (lat2 - lat1) * Math.PI / 180
+  const dG = (lng2 - lng1) * Math.PI / 180
+  const a  = Math.sin(dL / 2) ** 2
+           + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dG / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 export default function Dashboard() {
@@ -39,19 +46,13 @@ export default function Dashboard() {
   const positions    = useLivePositions()
   const navigate     = useNavigate()
   const mapRef       = useRef(null)
+  const centeredRef  = useRef(false)
 
   const [filter,       setFilter]     = useState('all')
   const [search,       setSearch]     = useState('')
   const [selectedId,   setSelectedId] = useState(null)
   const [popupId,      setPopupId]    = useState(null)
-  const [showPolice,      setShowPolice]      = useState(false)
-  const [showHospital,    setShowHospital]    = useState(false)
-  const [policeMarkers,   setPoliceMarkers]   = useState([])
-  const [hospitalMarkers, setHospitalMarkers] = useState([])
-  const [loadingPolice,   setLoadingPolice]   = useState(false)
-  const [loadingHospital, setLoadingHospital] = useState(false)
-  const [selectedPOI,     setSelectedPOI]     = useState(null)
-  const [mapStyle,        setMapStyle]        = useState('dark')
+  const [mapStyle, setMapStyle] = useState('dark')
   const [searchPin,       setSearchPin]       = useState(null)
 
   // Flatten all real units across accounts; attach primary device live position
@@ -110,6 +111,38 @@ export default function Dashboard() {
   // Only units with a live position get a map marker
   const liveUnits = useMemo(() => displayUnits.filter(u => u.lat != null), [displayUnits])
 
+  // Auto-center on the densest cluster of live units — fires once when positions first arrive
+  useEffect(() => {
+    if (centeredRef.current)   return
+    if (liveUnits.length === 0) return
+    if (!mapRef.current)        return
+    centeredRef.current = true
+
+    const lats = [...liveUnits.map(u => u.lat)].sort((a, b) => a - b)
+    const lngs = [...liveUnits.map(u => u.lng)].sort((a, b) => a - b)
+    const medLat = lats[Math.floor(lats.length / 2)]
+    const medLng = lngs[Math.floor(lngs.length / 2)]
+
+    // Keep only units within 500 km of the median — drops outliers
+    const cluster = liveUnits.filter(u => haversineKm(medLat, medLng, u.lat, u.lng) <= 500)
+    const target  = cluster.length > 0 ? cluster : liveUnits // fallback: use all
+
+    if (target.length === 1) {
+      mapRef.current.flyTo({ center: [target[0].lng, target[0].lat], zoom: 13, duration: 1400 })
+      return
+    }
+
+    const minLat = Math.min(...target.map(u => u.lat))
+    const maxLat = Math.max(...target.map(u => u.lat))
+    const minLng = Math.min(...target.map(u => u.lng))
+    const maxLng = Math.max(...target.map(u => u.lng))
+
+    mapRef.current.fitBounds(
+      [[minLng, minLat], [maxLng, maxLat]],
+      { padding: 120, duration: 1400, maxZoom: 14 },
+    )
+  }, [liveUnits])
+
   function selectUnit(id) {
     setSelectedId(id)
     setPopupId(id)
@@ -126,40 +159,6 @@ export default function Dashboard() {
       mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 900 })
     }
   }
-
-  async function fetchOverpassPOIs(amenity) {
-    const center = mapRef.current?.getCenter() ?? { lng: INITIAL_VIEW.longitude, lat: INITIAL_VIEW.latitude }
-    const query  = `[out:json][timeout:15];(node["amenity"="${amenity}"](around:6000,${center.lat},${center.lng});way["amenity"="${amenity}"](around:6000,${center.lat},${center.lng}););out center;`
-    const res    = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query })
-    const data   = await res.json()
-    return data.elements
-      .map(el => ({
-        id:        el.id,
-        name:      el.tags?.name ?? amenity,
-        lat:       el.lat ?? el.center?.lat,
-        lng:       el.lon ?? el.center?.lon,
-        phone:     el.tags?.phone ?? el.tags?.['contact:phone'] ?? null,
-        website:   el.tags?.website ?? el.tags?.['contact:website'] ?? null,
-        hours:     el.tags?.opening_hours ?? null,
-        address:   [el.tags?.['addr:housenumber'], el.tags?.['addr:street'], el.tags?.['addr:city']].filter(Boolean).join(', ') || null,
-        operator:  el.tags?.operator ?? null,
-        emergency: el.tags?.emergency ?? null,
-        beds:      el.tags?.beds ?? null,
-      }))
-      .filter(el => el.lat && el.lng)
-  }
-
-  useEffect(() => {
-    if (!showPolice) { setPoliceMarkers([]); return }
-    setLoadingPolice(true)
-    fetchOverpassPOIs('police').then(setPoliceMarkers).finally(() => setLoadingPolice(false))
-  }, [showPolice])
-
-  useEffect(() => {
-    if (!showHospital) { setHospitalMarkers([]); return }
-    setLoadingHospital(true)
-    fetchOverpassPOIs('hospital').then(setHospitalMarkers).finally(() => setLoadingHospital(false))
-  }, [showHospital])
 
   return (
     <div className="dashboard">
@@ -232,98 +231,18 @@ export default function Dashboard() {
           mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
-          <NavigationControl position="bottom-right" showCompass={false} />
           <AttributionControl compact position="bottom-left" />
+          <ZoneLayers />
+          <MarkerPins />
 
           <MapSearch onFlyTo={flyToPlace} onPin={setSearchPin} />
-          <MapStyleToggle style={mapStyle} onChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
 
           {searchPin && (
             <Marker longitude={searchPin.lng} latitude={searchPin.lat} anchor="bottom">
               <SearchPinMarker onDismiss={() => setSearchPin(null)} />
             </Marker>
           )}
-
-          {policeMarkers.map(poi => (
-            <Marker key={poi.id} longitude={poi.lng} latitude={poi.lat} anchor="center"
-              onClick={e => { e.originalEvent.stopPropagation(); setSelectedPOI({ ...poi, kind: 'police' }) }}>
-              <div className={`poi-marker poi-marker--police${selectedPOI?.id === poi.id ? ' selected' : ''}`}>
-                <PoliceIcon />
-                <span className="poi-marker__label">{poi.name}</span>
-              </div>
-            </Marker>
-          ))}
-
-          {hospitalMarkers.map(poi => (
-            <Marker key={poi.id} longitude={poi.lng} latitude={poi.lat} anchor="center"
-              onClick={e => { e.originalEvent.stopPropagation(); setSelectedPOI({ ...poi, kind: 'hospital' }) }}>
-              <div className={`poi-marker poi-marker--hospital${selectedPOI?.id === poi.id ? ' selected' : ''}`}>
-                <HospitalIcon />
-                <span className="poi-marker__label">{poi.name}</span>
-              </div>
-            </Marker>
-          ))}
-
-          {selectedPOI && (
-            <Popup
-              longitude={selectedPOI.lng} latitude={selectedPOI.lat}
-              anchor="bottom" offset={22} closeOnClick={false}
-              onClose={() => setSelectedPOI(null)} className="unit-popup"
-            >
-              <div className="upu">
-                <div className="upu-head">
-                  <span className="upu-dot" style={{
-                    background: selectedPOI.kind === 'police' ? '#4A90E2' : '#F2495B',
-                    boxShadow: `0 0 6px ${selectedPOI.kind === 'police' ? '#4A90E288' : '#F2495B88'}`,
-                  }} />
-                  <span className="upu-id">{selectedPOI.name}</span>
-                  <span className="upu-chip" style={selectedPOI.kind === 'police'
-                    ? { color: '#4A90E2', borderColor: '#4A90E244', background: '#4A90E218' }
-                    : { color: '#F2495B', borderColor: '#F2495B44', background: '#F2495B18' }}>
-                    {selectedPOI.kind === 'police' ? 'POLICE' : 'HOSPITAL'}
-                  </span>
-                </div>
-                <div className="upu-rows">
-                  {selectedPOI.address  && <UpuRow k="ADDRESS"  v={selectedPOI.address}  wrap />}
-                  {selectedPOI.phone    && <UpuRow k="PHONE"    v={<a href={`tel:${selectedPOI.phone}`} style={{ color: 'inherit' }}>{selectedPOI.phone}</a>} />}
-                  {selectedPOI.hours    && <UpuRow k="HOURS"    v={selectedPOI.hours} />}
-                  {selectedPOI.operator && <UpuRow k="OPERATOR" v={selectedPOI.operator} />}
-                  {selectedPOI.beds     && <UpuRow k="BEDS"     v={selectedPOI.beds} />}
-                  {selectedPOI.emergency && <UpuRow k="EMERGENCY" v={selectedPOI.emergency} />}
-                  {selectedPOI.website  && (
-                    <UpuRow k="WEBSITE" v={
-                      <a href={selectedPOI.website} target="_blank" rel="noreferrer" style={{ color: '#37C2B8' }}>
-                        {selectedPOI.website.replace(/^https?:\/\//, '')}
-                      </a>
-                    } />
-                  )}
-                  <UpuRow k="COORDS" v={`${selectedPOI.lat.toFixed(5)}, ${selectedPOI.lng.toFixed(5)}`} />
-                </div>
-              </div>
-            </Popup>
-          )}
-
-          {/* POI toggles overlay */}
-          <div className="map-poi-toggles">
-            <button
-              className={`map-poi-btn${showPolice ? ' active' : ''}`}
-              style={showPolice ? { borderColor: '#4A90E2', color: '#4A90E2', background: '#4A90E218' } : {}}
-              onClick={() => setShowPolice(v => !v)}
-              disabled={loadingPolice}
-            >
-              {loadingPolice ? <span className="map-poi-btn__spinner" /> : <span className="map-poi-btn__dot" style={{ background: '#4A90E2' }} />}
-              Police
-            </button>
-            <button
-              className={`map-poi-btn${showHospital ? ' active' : ''}`}
-              style={showHospital ? { borderColor: '#F2495B', color: '#F2495B', background: '#F2495B18' } : {}}
-              onClick={() => setShowHospital(v => !v)}
-              disabled={loadingHospital}
-            >
-              {loadingHospital ? <span className="map-poi-btn__spinner" /> : <span className="map-poi-btn__dot" style={{ background: '#F2495B' }} />}
-              Hospital
-            </button>
-          </div>
 
           {/* Unit markers — only units with a live primary device position */}
           {liveUnits.map(unit => {
@@ -398,15 +317,6 @@ export default function Dashboard() {
           })()}
         </Map>
       </div>
-    </div>
-  )
-}
-
-function UpuRow({ k, v, wrap, color }) {
-  return (
-    <div className="upu-row">
-      <span className="upu-key">{k}</span>
-      <span className={`upu-val${wrap ? ' upu-val--wrap' : ''}`} style={color ? { color } : undefined}>{v}</span>
     </div>
   )
 }
@@ -501,20 +411,3 @@ function SearchIcon() {
   )
 }
 
-function PoliceIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path d="M6 1L7.5 4H11L8.5 6.5L9.5 10L6 8L2.5 10L3.5 6.5L1 4H4.5L6 1Z" fill="currentColor"/>
-    </svg>
-  )
-}
-
-function HospitalIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" opacity="0.15"/>
-      <rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M6 3.5V8.5M3.5 6H8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  )
-}

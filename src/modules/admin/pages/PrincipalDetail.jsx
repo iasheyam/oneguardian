@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/mapbox'
+import Map, { Marker, Source, Layer } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
 import { apiUrl, apiFetch } from '../../../shared/utils/api'
+import { reverseGeocode, getTimezoneId } from '../../../shared/utils/googlePlaces'
+import { MapControls, MAP_STYLES } from '../components/MapControls'
+import ZoneLayers from '../components/ZoneLayers'
+import MarkerPins from '../components/MarkerPins'
 import './UnitDetail.css'
 
 function toLocalDt(date) {
@@ -66,6 +70,7 @@ export default function PrincipalDetail() {
   const positions    = useLivePositions()
 
   const [tab, setTab]           = useState('live')
+  const [mapStyle, setMapStyle] = useState('dark')
   const [fullscreen, setFullscreen] = useState(false)
   const [routeCoords,   setRouteCoords]   = useState([])
   const [routeProgress, setRouteProgress] = useState(100)
@@ -75,6 +80,10 @@ export default function PrincipalDetail() {
   const [fetchTrigger, setFetchTrigger] = useState(0)
   const mapRef   = useRef(null)
   const scrubRef = useRef(null)
+
+  const [address,  setAddress]  = useState(null)
+  const [timezone, setTimezone] = useState(null)
+  const [now,      setNow]      = useState(() => Date.now())
 
   // Find unit across all accounts where type === 'person'
   const { unit, accountName } = useMemo(() => {
@@ -119,6 +128,21 @@ export default function PrincipalDetail() {
     const timer = setTimeout(() => mapRef.current?.resize(), 50)
     return () => clearTimeout(timer)
   }, [fullscreen])
+
+  // Clock — ticks every second, drives local time + signal age displays
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Reverse-geocode + timezone — only refetches when position moves ~100 m
+  const geoLat = livePos ? +(livePos.latitude.toFixed(3))  : null
+  const geoLng = livePos ? +(livePos.longitude.toFixed(3)) : null
+  useEffect(() => {
+    if (!geoLat || !geoLng) { setAddress(null); return }
+    reverseGeocode(geoLat, geoLng).then(setAddress).catch(() => {})
+    getTimezoneId(geoLat, geoLng).then(setTimezone).catch(() => {})
+  }, [geoLat, geoLng]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fly to primary live device when position arrives — only on live tab
   useEffect(() => {
@@ -233,14 +257,6 @@ export default function PrincipalDetail() {
             )}
           </div>
 
-          <div className="ud-header__meta">
-            {unit.phone    && <MetaItem label="Phone"   value={unit.phone} mono />}
-            {unit.email    && <MetaItem label="Email"   value={unit.email} />}
-            {accountName   && <MetaItem label="Account" value={accountName} />}
-            {isLive && speedKph !== null && (
-              <MetaItem label="Speed" value={`${speedKph} kph`} mono />
-            )}
-          </div>
         </div>
       </div>
 
@@ -294,10 +310,12 @@ export default function PrincipalDetail() {
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
+          mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
-          <NavigationControl position="bottom-right" showCompass={false} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <ZoneLayers />
+          <MarkerPins />
 
           {/* LIVE — one marker per device with a live position */}
           {tab === 'live' && liveDevices.map(({ device, pos }) => {
@@ -389,7 +407,7 @@ export default function PrincipalDetail() {
       {/* ── body ──────────────────────────────────── */}
       <div className="ud-body">
         <div className="ud-left">
-          {tab === 'live'    && <PersonStats livePos={livePos} liveDeviceCount={liveDevices.length} />}
+          {tab === 'live'    && <PersonStats livePos={livePos} liveDeviceCount={liveDevices.length} address={address} timezone={timezone} now={now} />}
           {tab === 'history' && !loadingRoute && (
             <div className="ud-section">
               <span className="ud-section__title">ROUTE STATS</span>
@@ -417,7 +435,7 @@ export default function PrincipalDetail() {
           {tab === 'devices' && <DevicesDetail devices={unit.devices ?? []} />}
         </div>
         <div className="ud-right">
-          {tab === 'live'    && <LiveRight livePos={livePos} />}
+          {tab === 'live'    && <LiveRight livePos={livePos} liveDeviceCount={liveDevices.length} now={now} />}
           {tab === 'history' && (
             <div className="ud-section">
               <span className="ud-section__title">DEVICES</span>
@@ -446,46 +464,77 @@ export default function PrincipalDetail() {
 }
 
 /* ── PersonStats ─────────────────────────────────────────────── */
-function PersonStats({ livePos, liveDeviceCount }) {
+function PersonStats({ livePos, liveDeviceCount, address, timezone, now }) {
   const speedKph = livePos ? (livePos.speed * 1.852).toFixed(1) : null
-  const isLive   = !!livePos
+  const attrs    = livePos?.attributes ?? {}
+  const battery  = attrs.batteryLevel !== undefined ? Math.round(attrs.batteryLevel) : null
+  const motion   = attrs.motion !== undefined ? (attrs.motion ? 'Moving' : 'Stationary') : null
+
+  const localTime = timezone
+    ? new Date(now).toLocaleTimeString('en-US', { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+    : null
+
+  const signalSecs = livePos?.serverTime
+    ? Math.floor((now - new Date(livePos.serverTime).getTime()) / 1000)
+    : null
+
+  const batteryColor = battery === null ? '#66727A'
+    : battery < 20 ? '#F2495B'
+    : battery < 40 ? '#E0A63C'
+    : '#37C2B8'
 
   return (
     <div className="ud-section">
       <span className="ud-section__title">LIVE TELEMETRY</span>
+
+      {/* Address */}
+      <div className="ud-address-card">
+        {address
+          ? <>
+              <span className="ud-address-card__text">{address}</span>
+              {signalSecs !== null && (
+                <span className="ud-address-card__sub">
+                  Updated {signalSecs < 60 ? `${signalSecs}s` : `${Math.floor(signalSecs / 60)}m ${signalSecs % 60}s`} ago
+                  {livePos.fixTime && ` · ${new Date(livePos.fixTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} UTC`}
+                </span>
+              )}
+            </>
+          : <span className="ud-address-card__sub">{livePos ? 'Resolving address…' : 'No signal'}</span>
+        }
+      </div>
+
       <div className="ud-person-stats">
+        <div className="ud-stat-tile">
+          <span className="ud-stat-tile__label">LOCAL TIME</span>
+          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+            {localTime ?? '—'}
+          </span>
+          <span className="ud-stat-tile__sub">{timezone ? timezone.replace(/_/g, ' ') : 'At location'}</span>
+        </div>
+
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">SPEED</span>
           <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>
-            {speedKph !== null ? speedKph : '—'}
+            {speedKph ?? '—'}
           </span>
-          <span className="ud-stat-tile__sub">{speedKph !== null ? 'kph' : 'No signal'}</span>
+          <span className="ud-stat-tile__sub">{livePos ? 'kph' : 'No signal'}</span>
         </div>
 
         <div className="ud-stat-tile">
-          <span className="ud-stat-tile__label">HEADING</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>
-            {livePos ? `${livePos.course}°` : '—'}
+          <span className="ud-stat-tile__label">MOTION</span>
+          <span className="ud-stat-tile__value"
+            style={{ color: motion === 'Moving' ? '#37C2B8' : motion === 'Stationary' ? '#AEB8BD' : '#66727A', fontSize: 14 }}>
+            {motion ?? '—'}
           </span>
-          <span className="ud-stat-tile__sub">{livePos ? 'degrees' : 'No signal'}</span>
+          <span className="ud-stat-tile__sub">State</span>
         </div>
 
         <div className="ud-stat-tile">
-          <span className="ud-stat-tile__label">ALTITUDE</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>
-            {livePos ? livePos.altitude : '—'}
+          <span className="ud-stat-tile__label">BATTERY</span>
+          <span className="ud-stat-tile__value" style={{ color: batteryColor }}>
+            {battery !== null ? `${battery}%` : '—'}
           </span>
-          <span className="ud-stat-tile__sub">{livePos ? 'm' : 'No signal'}</span>
-        </div>
-
-        <div className="ud-stat-tile">
-          <span className="ud-stat-tile__label">TRACKING</span>
-          <span className="ud-stat-tile__value" style={{ color: isLive ? '#37C2B8' : '#66727A' }}>
-            {liveDeviceCount > 0 ? liveDeviceCount : '—'}
-          </span>
-          <span className="ud-stat-tile__sub">
-            {liveDeviceCount > 0 ? `Device${liveDeviceCount > 1 ? 's' : ''} live` : 'No signal'}
-          </span>
+          <span className="ud-stat-tile__sub">{battery !== null ? 'Device' : 'No data'}</span>
         </div>
       </div>
     </div>
@@ -493,29 +542,44 @@ function PersonStats({ livePos, liveDeviceCount }) {
 }
 
 /* ── LiveRight ────────────────────────────────────────────────── */
-function LiveRight({ livePos }) {
-  const attrs = livePos?.attributes ?? {}
+function LiveRight({ livePos, liveDeviceCount, now }) {
+  if (!livePos) return (
+    <div className="ud-section">
+      <span className="ud-section__title">POSITION DATA</span>
+      <span className="ud-events-empty">No live data</span>
+    </div>
+  )
+
+  const attrs      = livePos.attributes ?? {}
+  const signalSecs = Math.floor((now - new Date(livePos.serverTime).getTime()) / 1000)
+  const signalColor = signalSecs < 30 ? '#37C2B8' : signalSecs < 120 ? '#E0A63C' : '#F2495B'
+  const signalText  = signalSecs < 60
+    ? `${signalSecs}s ago`
+    : `${Math.floor(signalSecs / 60)}m ${signalSecs % 60}s ago`
+
+  const rows = [
+    ['LATITUDE',   `${livePos.latitude.toFixed(6)}°`,                   null],
+    ['LONGITUDE',  `${livePos.longitude.toFixed(6)}°`,                  null],
+    ['ALTITUDE',   livePos.altitude != null ? `${livePos.altitude} m` : '—', null],
+    ['ACCURACY',   livePos.accuracy  != null ? `±${livePos.accuracy.toFixed(0)} m` : '—', null],
+    ['HEADING',    livePos.course    != null ? `${livePos.course}°`   : '—', null],
+    ['SATELLITES', attrs.sat         != null ? `${attrs.sat}`         : '—', null],
+    ['TRACKING',   liveDeviceCount > 0 ? `${liveDeviceCount} device${liveDeviceCount > 1 ? 's' : ''}` : '—', null],
+    ['SIGNAL',     signalText,                                          signalColor],
+    ['FIX TIME',   new Date(livePos.fixTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' UTC', null],
+  ]
+
   return (
     <div className="ud-section">
-      <span className="ud-section__title">ATTRIBUTES</span>
-      {!livePos
-        ? <span className="ud-events-empty">No live data</span>
-        : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {[
-              ['Fix Time', new Date(livePos.fixTime).toLocaleTimeString()],
-              ['Accuracy', livePos.accuracy ? `${livePos.accuracy.toFixed(1)} m` : '—'],
-              ['Battery',  attrs.batteryLevel !== undefined ? `${Math.round(attrs.batteryLevel)}%` : '—'],
-              ['Motion',   attrs.motion !== undefined ? (attrs.motion ? 'Moving' : 'Stationary') : '—'],
-            ].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: '#4A5A62', textTransform: 'uppercase' }}>{label}</span>
-                <span style={{ fontSize: 12, color: '#AEB8BD' }}>{value}</span>
-              </div>
-            ))}
+      <span className="ud-section__title">POSITION DATA</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {rows.map(([label, value, color]) => (
+          <div key={label} className="ud-pos-row">
+            <span className="ud-pos-row__label">{label}</span>
+            <span className="ud-pos-row__value" style={color ? { color } : undefined}>{value}</span>
           </div>
-        )
-      }
+        ))}
+      </div>
     </div>
   )
 }
@@ -707,12 +771,3 @@ function CollapseIcon() {
   )
 }
 
-/* ── helpers ─────────────────────────────────────────────────── */
-function MetaItem({ label, value, mono }) {
-  return (
-    <div className="ud-meta-item">
-      <span className="ud-meta-item__label">{label}</span>
-      <span className={`ud-meta-item__value${mono ? ' mono' : ''}`}>{value}</span>
-    </div>
-  )
-}

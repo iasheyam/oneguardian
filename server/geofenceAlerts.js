@@ -4,6 +4,7 @@ import { zones } from '../db/schema/zones.js'
 import { principals, vehicles } from '../db/schema/accounts.js'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { broadcast, broadcastToAccount } from './sse.js'
+import { trackEvent } from './trackEvent.js'
 import { getDeviceEntry } from './triggerEngine.js'
 
 // ── zone trigger cache ────────────────────────────────────────────────────────
@@ -143,6 +144,8 @@ export async function handleGeofenceEvent(event, pos) {
 
     broadcast({ type: 'alert', alert: alertPayload })
     if (accountId) broadcastToAccount(accountId, { type: 'alert', alert: alertPayload })
+
+    trackEvent({ event: 'alert.fired', description: `${trigger.name} fired for "${unitName ?? unitId}" (zone: ${zone.name})`, subjectId: alert.id, metadata: { triggerId: trigger.id, unitId, unitType, severity: trigger.severity, zoneName: zone.name, riskLevel: zone.riskLevel } })
 
     console.log(`[geofenceAlerts] ${trigger.name} → unit ${unitId} (zone: ${zone.name})`)
   } catch (err) {
