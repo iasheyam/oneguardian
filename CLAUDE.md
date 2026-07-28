@@ -83,6 +83,14 @@ Fired alert records.
 ### userScopeAssignments
 Controls which principals/vehicles an operator user can see. Operators are scoped to specific units within an account rather than seeing everything.
 
+### activity_logs
+Audit trail for all database mutations.
+- `event` — dot-namespaced key (e.g. `account.created`, `alert.fired`, `trigger.unit_assigned`)
+- `actorId` — FK to `users.id` (operator or client user who acted; null for system events)
+- `subjectId` — free UUID (no FK) pointing to any entity: account, principal, vehicle, group, device, place, plan, zone, marker, trigger, or alert. **FK to `users` was intentionally dropped** so non-user entities can be referenced.
+- `description` — human-readable past-tense sentence
+- `metadata` — JSONB; `{ from, to }` for renames/role changes; `{ fields }` for bulk updates
+
 ### places
 Account-level named locations with geofences. Used as reusable origins/destinations in plan legs.
 - Belongs to an `account`
@@ -165,6 +173,13 @@ Two separate channels in `server/sse.js`. Avoids circular dependency between `tr
 - `clientsByAccount` (Map of accountId → Set) — `/api/client/live`, receives positions and alerts scoped to that account only
 - Message types: `snapshot`, `positions`, `alert`
 
+### Audit logging (`server/trackEvent.js`)
+Fire-and-forget audit writer. Errors are caught silently — a failed log never blocks the main operation.
+- Called after every database mutation across all pages: Accounts, Triggers, Map Studio, Admin, and Client API
+- `alert.fired` is logged in both `triggerEngine.js` and `geofenceAlerts.js` — simulations (`isSimulation: true`) are skipped
+- `subjectId` accepts any entity UUID; the FK constraint on `activity_logs.subject_id` was dropped so non-user entities can be referenced
+- Event naming: dot-namespaced lowercase — `resource.verb` (e.g. `account.created`, `group.renamed`, `trigger.unit_assigned`)
+
 ### Map controls (`src/modules/admin/components/MapControls.jsx`)
 Centralized overlay rendered inside every `<Map>` as a child. Uses `useMap()` hook — no `mapRef` prop needed.
 - Groups: MAP/SAT style toggle · +/− zoom · Police/Hospital POI overlays (Overpass API, 6km radius around current center)
@@ -181,6 +196,9 @@ For the mobile app. All routes require a valid JWT **and** a principal linked to
 - `POST /api/client/principal/devices` — register a device; `type` defaults to `"phone"` if omitted, auto-sets as `primaryDeviceId` if principal has none
 - `PATCH /api/client/principal/devices/:deviceId` — edit `name` / `model` only
 - `PATCH /api/client/principal/primary-device` — set or clear `primaryDeviceId`; device must belong to caller's principal
+- Places CRUD: `GET/POST /api/client/places`, `PATCH/DELETE /api/client/places/:placeId` — full Traccar geofence sync mirrored from operator routes
+- Plans CRUD: `GET/POST /api/client/plans`, `PATCH/DELETE /api/client/plans/:planId` — GET inlines `originPlaceName`/`destinationPlaceName` in each leg to avoid N+1 on the client
+- Groups CRUD: `GET/POST /api/client/groups`, `PATCH/DELETE /api/client/groups/:groupId`, `POST/DELETE /api/client/groups/:groupId/members` — account-scoped; returns `{ id, name, unitIds[] }`
 
 ### Auth
 - `authenticate` middleware: validates Cognito JWT, attaches `req.caller`

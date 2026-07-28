@@ -1126,3 +1126,71 @@ All top-level fields optional. If `units` or `legs` is provided, the existing se
 **Auth:** authenticated + linked principal
 
 Cascades to plan legs and unit assignments. `404` if not in caller's account.
+
+---
+
+### Groups
+
+Account-scoped group management. Groups are named collections of principals and vehicles within an account.
+
+**Group object**
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "unitIds": ["uuid", "uuid"]
+}
+```
+`unitIds` contains both principal and vehicle UUIDs — no type distinction in the array.
+
+#### `GET /api/client/groups`
+**Auth:** authenticated + linked principal
+
+Returns all groups for the caller's account.
+
+#### `POST /api/client/groups`
+**Auth:** authenticated + linked principal
+
+**Body**
+```json
+{ "name": "string" }
+```
+
+**Response** — group object with empty `unitIds`.
+
+#### `PATCH /api/client/groups/:groupId`
+**Auth:** authenticated + linked principal
+
+**Body**
+```json
+{ "name": "string" }
+```
+
+`404` if group does not belong to caller's account.
+
+#### `DELETE /api/client/groups/:groupId`
+**Auth:** authenticated + linked principal
+
+`404` if group does not belong to caller's account.
+
+#### `POST /api/client/groups/:groupId/members`
+**Auth:** authenticated + linked principal
+
+**Body** — pass one of:
+```json
+{ "principalId": "uuid" }
+{ "vehicleId": "uuid" }
+```
+
+`404` if group does not belong to caller's account.
+
+#### `DELETE /api/client/groups/:groupId/members`
+**Auth:** authenticated + linked principal
+
+**Body** — pass one of:
+```json
+{ "principalId": "uuid" }
+{ "vehicleId": "uuid" }
+```
+
+`404` if group does not belong to caller's account.

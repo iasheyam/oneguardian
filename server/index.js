@@ -1822,6 +1822,97 @@ app.delete('/api/client/plans/:planId', authenticate, requireClientPrincipal, as
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
+/* ── client groups ────────────────────────────────────────────── */
+
+app.get('/api/client/groups', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const gs = await db.select().from(groups).where(eq(groups.accountId, accountId)).orderBy(groups.createdAt)
+    if (!gs.length) return res.json([])
+    const gms = await db.select().from(groupMembers).where(inArray(groupMembers.groupId, gs.map(g => g.id)))
+    res.json(gs.map(g => ({
+      id: g.id,
+      name: g.name,
+      unitIds: gms.filter(m => m.groupId === g.id).map(m => m.principalId ?? m.vehicleId).filter(Boolean),
+    })))
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/client/groups', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { name } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' })
+  try {
+    const [g] = await db.insert(groups).values({ accountId, name: name.trim() }).returning()
+    trackEvent({ event: 'group.created', description: `${req.caller.name} created group "${g.name}"`, actorId: req.caller.id, subjectId: g.id })
+    res.json({ id: g.id, name: g.name, unitIds: [] })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/client/groups/:groupId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { name } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' })
+  try {
+    const [existing] = await db.select({ id: groups.id, name: groups.name }).from(groups)
+      .where(and(eq(groups.id, req.params.groupId), eq(groups.accountId, accountId))).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Group not found' })
+    const [g] = await db.update(groups).set({ name: name.trim() }).where(eq(groups.id, req.params.groupId)).returning()
+    trackEvent({ event: 'group.renamed', description: `${req.caller.name} renamed group "${existing.name}" to "${g.name}"`, actorId: req.caller.id, subjectId: g.id, metadata: { from: existing.name, to: g.name } })
+    res.json({ id: g.id, name: g.name })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/client/groups/:groupId', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const [existing] = await db.select({ id: groups.id, name: groups.name }).from(groups)
+      .where(and(eq(groups.id, req.params.groupId), eq(groups.accountId, accountId))).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Group not found' })
+    await db.delete(groups).where(eq(groups.id, req.params.groupId))
+    trackEvent({ event: 'group.deleted', description: `${req.caller.name} deleted group "${existing.name}"`, actorId: req.caller.id, subjectId: existing.id })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.post('/api/client/groups/:groupId/members', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { principalId, vehicleId } = req.body
+  if (!principalId && !vehicleId) return res.status(400).json({ error: 'principalId or vehicleId is required' })
+  try {
+    const [grp] = await db.select({ id: groups.id, name: groups.name }).from(groups)
+      .where(and(eq(groups.id, req.params.groupId), eq(groups.accountId, accountId))).limit(1)
+    if (!grp) return res.status(404).json({ error: 'Group not found' })
+    await db.insert(groupMembers).values({ groupId: req.params.groupId, principalId: principalId ?? null, vehicleId: vehicleId ?? null })
+    const [unit] = principalId
+      ? await db.select({ name: principals.name }).from(principals).where(eq(principals.id, principalId)).limit(1)
+      : await db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1)
+    trackEvent({ event: 'group.member_added', description: `${req.caller.name} added "${unit?.name}" to group "${grp.name}"`, actorId: req.caller.id, subjectId: grp.id })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
+app.delete('/api/client/groups/:groupId/members', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const { principalId, vehicleId } = req.body
+  if (!principalId && !vehicleId) return res.status(400).json({ error: 'principalId or vehicleId is required' })
+  try {
+    const [grp] = await db.select({ id: groups.id, name: groups.name }).from(groups)
+      .where(and(eq(groups.id, req.params.groupId), eq(groups.accountId, accountId))).limit(1)
+    if (!grp) return res.status(404).json({ error: 'Group not found' })
+    if (principalId) {
+      await db.delete(groupMembers).where(and(eq(groupMembers.groupId, req.params.groupId), eq(groupMembers.principalId, principalId)))
+    } else {
+      await db.delete(groupMembers).where(and(eq(groupMembers.groupId, req.params.groupId), eq(groupMembers.vehicleId, vehicleId)))
+    }
+    const [unit] = principalId
+      ? await db.select({ name: principals.name }).from(principals).where(eq(principals.id, principalId)).limit(1)
+      : await db.select({ name: vehicles.callsign }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1)
+    trackEvent({ event: 'group.member_removed', description: `${req.caller.name} removed "${unit?.name}" from group "${grp.name}"`, actorId: req.caller.id, subjectId: grp.id })
+    res.json({ ok: true })
+  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+})
+
 /* ── operator live feed ───────────────────────────────────────── */
 app.get('/api/live', authenticate, (req, res) => {
   res.setHeader('Content-Type',       'text/event-stream')
