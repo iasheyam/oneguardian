@@ -108,8 +108,8 @@ export async function handleGeofenceEvent(event, pos) {
 
   try {
     const snapshot = pos
-      ? { speed: pos.speed, latitude: pos.latitude, longitude: pos.longitude, attributes: pos.attributes ?? {} }
-      : { speed: null, latitude: null, longitude: null, attributes: {} }
+      ? { speed: pos.speed, latitude: pos.latitude, longitude: pos.longitude, address: pos.address ?? null, attributes: pos.attributes ?? {} }
+      : { speed: null, latitude: null, longitude: null, address: null, attributes: {} }
 
     let unitName = null
     try {

@@ -244,6 +244,12 @@
   color: var(--adm-text-muted);
 }
 
+.alert-detail__coords {
+  font-size: 11px;
+  color: var(--adm-text-dim);
+  margin-left: 4px;
+}
+
 /* ── action log ───────────────────────────────────────────── */
 .alert-log {
   padding: 14px 20px;
@@ -401,6 +407,27 @@
   background: var(--adm-bg-raised);
   border-color: var(--adm-text-dim);
   color: var(--adm-text-muted);
+}
+
+.alert-unit-btn {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 7px;
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--adm-border);
+  color: var(--adm-text-muted);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.alert-unit-btn:hover {
+  background: var(--adm-bg-raised);
+  border-color: var(--adm-text-muted);
+  color: var(--adm-text);
 }
 
 .alert-ack-btn {

@@ -49,6 +49,10 @@ async function connect() {
 
       if (msg.positions?.length) {
         for (const pos of msg.positions) {
+          if (!pos.address) {
+            const prev = positionCache.get(pos.deviceId)
+            if (prev?.address) pos.address = prev.address
+          }
           positionCache.set(pos.deviceId, pos)
         }
         try {
@@ -99,11 +103,28 @@ async function connect() {
   ws.on('error', err => console.error('[traccar] WebSocket error:', err.message))
 }
 
-export function startTraccar() {
+async function preloadPositionCache() {
+  try {
+    const res = await fetch(`${TRACCAR_URL}/api/positions`, {
+      headers: { Authorization: `Basic ${basicAuth}` },
+    })
+    if (!res.ok) { console.warn('[traccar] preload responded', res.status); return }
+    const positions = await res.json()
+    for (const pos of positions) {
+      positionCache.set(pos.deviceId, pos)
+    }
+    console.log(`[traccar] preloaded ${positions.length} positions with addresses`)
+  } catch (err) {
+    console.error('[traccar] preload failed:', err.message)
+  }
+}
+
+export async function startTraccar() {
   if (!TRACCAR_URL || !TRACCAR_USER || !TRACCAR_PASS) {
     console.warn('[traccar] Missing env vars — skipping Traccar connection')
     return
   }
+  await preloadPositionCache()
   connect()
 }
 

@@ -1409,59 +1409,81 @@ app.get('/api/client/account', authenticate, requireClientPrincipal, async (req,
   } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
 })
 
-app.get('/api/client/units/:id', authenticate, requireClientPrincipal, async (req, res) => {
-  const { id } = req.params
+/* ── client principals ────────────────────────────────────────── */
+app.get('/api/client/principals/:id', authenticate, requireClientPrincipal, async (req, res) => {
   const { accountId } = req.clientPrincipal
   try {
-    const [principal] = await db.select().from(principals)
-      .where(and(eq(principals.id, id), eq(principals.accountId, accountId))).limit(1)
+    const [p] = await db.select().from(principals)
+      .where(and(eq(principals.id, req.params.id), eq(principals.accountId, accountId))).limit(1)
+    if (!p) return res.status(404).json({ error: 'Principal not found' })
+    const unitDevices = await db.select().from(devices).where(eq(devices.principalId, p.id))
+    res.json({
+      id: p.id, accountId: p.accountId, userId: p.userId,
+      name: p.name, role: p.role, phone: p.phone, email: p.email,
+      status: p.status, photoKey: p.photoKey, primaryDeviceId: p.primaryDeviceId ?? null,
+      devices: unitDevices.map(serializeDevice),
+      medical: {
+        dob: p.dob, height: p.height, bloodGroup: p.bloodGroup,
+        allergies: p.allergies, conditions: p.conditions, medications: p.medications,
+      },
+      emergencyContact: {
+        name: p.emergContactName, phone: p.emergContactPhone, relation: p.emergContactRelation,
+      },
+    })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
 
-    if (principal) {
-      const unitDevices = await db.select().from(devices).where(eq(devices.principalId, id))
-      return res.json({
-        id:              principal.id,
-        type:            'person',
-        name:            principal.name,
-        role:            principal.role,
-        phone:           principal.phone,
-        status:          principal.status,
-        primaryDeviceId: principal.primaryDeviceId ?? null,
-        devices:         unitDevices.map(serializeDevice),
-        emergency: {
-          bloodGroup:      principal.bloodGroup,
-          dob:             principal.dob,
-          height:          principal.height,
-          allergies:       principal.allergies,
-          conditions:      principal.conditions,
-          medications:     principal.medications,
-          contactName:     principal.emergContactName,
-          contactPhone:    principal.emergContactPhone,
-          contactRelation: principal.emergContactRelation,
-        },
-      })
-    }
+app.patch('/api/client/principals/:id', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const ALLOWED = ['name', 'phone', 'email', 'dob', 'height', 'bloodGroup', 'allergies', 'conditions', 'medications', 'emergContactName', 'emergContactPhone', 'emergContactRelation']
+  const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED.includes(k)))
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'No valid fields provided' })
+  try {
+    const [existing] = await db.select({ id: principals.id }).from(principals)
+      .where(and(eq(principals.id, req.params.id), eq(principals.accountId, accountId))).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Principal not found' })
+    const [updated] = await db.update(principals)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(principals.id, req.params.id))
+      .returning()
+    trackEvent({ event: 'principal.updated', description: `Principal "${updated.name}" updated`, actorId: req.caller.id, subjectId: updated.id, metadata: { fields: Object.keys(patch) } })
+    res.json(updated)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
 
-    const [vehicle] = await db.select().from(vehicles)
-      .where(and(eq(vehicles.id, id), eq(vehicles.accountId, accountId))).limit(1)
+/* ── client vehicles ──────────────────────────────────────────── */
+app.get('/api/client/vehicles/:id', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  try {
+    const [v] = await db.select().from(vehicles)
+      .where(and(eq(vehicles.id, req.params.id), eq(vehicles.accountId, accountId))).limit(1)
+    if (!v) return res.status(404).json({ error: 'Vehicle not found' })
+    const unitDevices = await db.select().from(devices).where(eq(devices.vehicleId, v.id))
+    res.json({
+      id: v.id, accountId: v.accountId,
+      callsign: v.callsign, make: v.make, model: v.model, plate: v.plate, armorLevel: v.armorLevel,
+      status: v.status, photoKey: v.photoKey, primaryDeviceId: v.primaryDeviceId ?? null,
+      devices: unitDevices.map(serializeDevice),
+    })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
 
-    if (vehicle) {
-      const unitDevices = await db.select().from(devices).where(eq(devices.vehicleId, id))
-      return res.json({
-        id:              vehicle.id,
-        type:            'vehicle',
-        name:            vehicle.callsign,
-        make:            vehicle.make,
-        model:           vehicle.model,
-        plate:           vehicle.plate,
-        armorLevel:      vehicle.armorLevel,
-        status:          vehicle.status,
-        primaryDeviceId: vehicle.primaryDeviceId ?? null,
-        devices:         unitDevices.map(serializeDevice),
-      })
-    }
-
-    res.status(404).json({ error: 'Unit not found or not in your account' })
-  } catch (err) { console.error(err); res.status(500).json({ error: err.message }) }
+app.patch('/api/client/vehicles/:id', authenticate, requireClientPrincipal, async (req, res) => {
+  const { accountId } = req.clientPrincipal
+  const ALLOWED = ['callsign', 'make', 'model', 'plate', 'armorLevel']
+  const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED.includes(k)))
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'No valid fields provided' })
+  try {
+    const [existing] = await db.select({ id: vehicles.id, callsign: vehicles.callsign }).from(vehicles)
+      .where(and(eq(vehicles.id, req.params.id), eq(vehicles.accountId, accountId))).limit(1)
+    if (!existing) return res.status(404).json({ error: 'Vehicle not found' })
+    const [updated] = await db.update(vehicles)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(vehicles.id, req.params.id))
+      .returning()
+    trackEvent({ event: 'vehicle.updated', description: `Vehicle "${updated.callsign}" updated`, actorId: req.caller.id, subjectId: updated.id, metadata: { fields: Object.keys(patch) } })
+    res.json(updated)
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 app.get('/api/client/live', authenticate, requireClientPrincipal, (req, res) => {
@@ -1490,6 +1512,29 @@ app.get('/api/client/live', authenticate, requireClientPrincipal, (req, res) => 
     clearInterval(heartbeat)
     removeClientSseClient(res, accountId)
   })
+})
+
+/* ── client principal profile ─────────────────────────────────── */
+app.get('/api/client/principal', authenticate, requireClientPrincipal, async (req, res) => {
+  try {
+    const [p] = await db.select().from(principals).where(eq(principals.id, req.clientPrincipal.id)).limit(1)
+    if (!p) return res.status(404).json({ error: 'Principal not found' })
+    res.json(p)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.patch('/api/client/principal', authenticate, requireClientPrincipal, async (req, res) => {
+  const ALLOWED = ['name', 'phone', 'email', 'dob', 'height', 'bloodGroup', 'allergies', 'conditions', 'medications', 'emergContactName', 'emergContactPhone', 'emergContactRelation']
+  const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED.includes(k)))
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'No valid fields provided' })
+  try {
+    const [updated] = await db.update(principals)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(principals.id, req.clientPrincipal.id))
+      .returning()
+    trackEvent({ event: 'principal.updated', description: `Principal "${updated.name}" updated own profile`, actorId: req.caller.id, subjectId: updated.id, metadata: { fields: Object.keys(patch) } })
+    res.json(updated)
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 /* ── client device registration ───────────────────────────────── */

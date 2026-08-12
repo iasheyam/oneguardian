@@ -126,7 +126,7 @@ function fireAlert(trigger, unitId, unitType, pos, isSimulation = false) {
 
 async function persistAlert(trigger, unitId, unitType, pos, isSimulation = false) {
   try {
-    const snapshot = { speed: pos.speed, latitude: pos.latitude, longitude: pos.longitude, attributes: pos.attributes ?? {} }
+    const snapshot = { speed: pos.speed, latitude: pos.latitude, longitude: pos.longitude, address: pos.address ?? null, attributes: pos.attributes ?? {} }
     const [alert] = await db.insert(alerts).values({
       triggerId:    trigger.id,
       unitId,

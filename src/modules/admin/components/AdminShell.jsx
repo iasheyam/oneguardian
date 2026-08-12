@@ -43,14 +43,21 @@ function dbAlertToModal(a) {
     level:     a.severity === 'red_alert' ? 'duress' : 'warning',
     type:      TRIGGER_TYPE_MAP[a.triggerType] ?? 'speed',
     unitId:    a.unitType ? a.unitType.toUpperCase() : 'UNIT',
+    unitDbId:  a.unitId,
+    unitType:  a.unitType,
     callsign:  a.unitName ?? '—',
     agent:     null,
     vehicle:   null,
     armorLevel:null,
     plate:     null,
-    location:  a.position?.latitude != null
-      ? `${Number(a.position.latitude).toFixed(4)}°, ${Number(a.position.longitude).toFixed(4)}°`
-      : '—',
+    lat:            a.position?.latitude  ?? null,
+    lng:            a.position?.longitude ?? null,
+    traccarAddress: a.position?.address   ?? null,
+    location:  a.position?.address ?? (
+      a.position?.latitude != null
+        ? `${Number(a.position.latitude).toFixed(4)}°, ${Number(a.position.longitude).toFixed(4)}°`
+        : '—'
+    ),
     speed:     a.position?.speed ?? 0,
     heading:   null,
     time:      firedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

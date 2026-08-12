@@ -135,14 +135,18 @@ export default function PrincipalDetail() {
     return () => clearInterval(id)
   }, [])
 
-  // Reverse-geocode + timezone — only refetches when position moves ~100 m
+  // Address + timezone — only refetches when position moves ~100 m
   const geoLat = livePos ? +(livePos.latitude.toFixed(3))  : null
   const geoLng = livePos ? +(livePos.longitude.toFixed(3)) : null
   useEffect(() => {
-    if (!geoLat || !geoLng) { setAddress(null); return }
-    reverseGeocode(geoLat, geoLng).then(setAddress).catch(() => {})
+    if (!geoLat || !geoLng) { setAddress(null); setTimezone(null); return }
+    if (livePos?.address) {
+      setAddress(livePos.address)
+    } else {
+      reverseGeocode(geoLat, geoLng).then(setAddress).catch(() => {})
+    }
     getTimezoneId(geoLat, geoLng).then(setTimezone).catch(() => {})
-  }, [geoLat, geoLng]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geoLat, geoLng, livePos?.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fly to primary live device when position arrives — only on live tab
   useEffect(() => {

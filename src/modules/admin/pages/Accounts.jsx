@@ -5,6 +5,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { useAccounts } from '../contexts/AccountsContext'
 import UnitTriggers from '../components/UnitTriggers'
 import { apiUrl, apiFetch } from '../../../shared/utils/api'
+import { searchGoogle, retrieveGoogle } from '../../../shared/utils/googlePlaces'
 import './Accounts.css'
 
 /* ── constants ────────────────────────────────────────────────── */
@@ -69,25 +70,15 @@ function makeCircleGeoJSON(lng, lat, radiusMeters) {
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} }
 }
 
-async function searchMapbox(q, sessionToken) {
-  const url  = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}&access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}&limit=5&language=en`
-  const res  = await fetch(url)
-  const data = await res.json()
-  return data.suggestions ?? []
-}
-
-async function retrieveMapbox(mapboxId, sessionToken) {
-  const url  = `https://api.mapbox.com/search/searchbox/v1/retrieve/${mapboxId}?access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}`
-  const res  = await fetch(url)
-  const data = await res.json()
-  const feat = data.features?.[0]
-  if (!feat) return null
+async function resolveGooglePlace(placeId) {
+  const data = await retrieveGoogle(placeId)
+  if (!data) return null
   return {
-    name:      feat.properties.name,
-    address:   feat.properties.full_address ?? feat.properties.place_formatted ?? feat.properties.name,
-    mapboxId:  feat.properties.mapbox_id,
-    latitude:  feat.properties.coordinates.latitude,
-    longitude: feat.properties.coordinates.longitude,
+    name:      data.displayName?.text ?? '',
+    address:   data.formattedAddress ?? '',
+    mapboxId:  placeId,
+    latitude:  data.location.latitude,
+    longitude: data.location.longitude,
   }
 }
 
@@ -998,7 +989,7 @@ function PlaceForm({ initial, onSave, onCancel }) {
     clearTimeout(debounceRef.current)
     if (!q.trim()) { setSuggestions([]); return }
     debounceRef.current = setTimeout(async () => {
-      const results = await searchMapbox(q, sessionToken)
+      const results = await searchGoogle(q, sessionToken)
       setSuggestions(results)
     }, 300)
   }
@@ -1006,7 +997,7 @@ function PlaceForm({ initial, onSave, onCancel }) {
   async function handleSelect(suggestion) {
     setSuggestions([])
     setQuery('')
-    const place = await retrieveMapbox(suggestion.mapbox_id, sessionToken)
+    const place = await resolveGooglePlace(suggestion.placeId)
     if (!place) return
     setResolved(place)
     if (!name || name === resolved?.name) setName(place.name)
@@ -1044,12 +1035,12 @@ function PlaceForm({ initial, onSave, onCancel }) {
             <div className="ac-place-suggestions">
               {suggestions.map(s => (
                 <button
-                  key={s.mapbox_id}
+                  key={s.placeId}
                   className="ac-place-suggestion"
                   onMouseDown={e => { e.preventDefault(); handleSelect(s) }}
                 >
                   <span className="ac-place-suggestion__name">{s.name}</span>
-                  <span className="ac-place-suggestion__sub">{s.place_formatted}</span>
+                  <span className="ac-place-suggestion__sub">{s.context}</span>
                 </button>
               ))}
             </div>
@@ -1292,7 +1283,7 @@ function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) 
   const [sessionToken] = useState(() => crypto.randomUUID())
   const debounceRef    = useRef(null)
   const [query,       setQuery]      = useState('')
-  const [mapboxSuggs, setMapboxSuggs] = useState([])
+  const [googleSuggs, setGoogleSuggs] = useState([])
   const [dropOpen,    setDropOpen]   = useState(false)
   const [addingNew,   setAddingNew]  = useState(null)
 
@@ -1306,11 +1297,11 @@ function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) 
   function handleQueryChange(q) {
     setQuery(q)
     clearTimeout(debounceRef.current)
-    setMapboxSuggs([])
+    setGoogleSuggs([])
     if (!q.trim()) return
     debounceRef.current = setTimeout(async () => {
-      const results = await searchMapbox(q, sessionToken)
-      setMapboxSuggs(results)
+      const results = await searchGoogle(q, sessionToken)
+      setGoogleSuggs(results)
     }, 350)
   }
 
@@ -1318,15 +1309,15 @@ function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) 
     onChange(place.id)
     setQuery('')
     setDropOpen(false)
-    setMapboxSuggs([])
+    setGoogleSuggs([])
   }
 
-  async function handleSelectMapbox(suggestion) {
-    const resolved = await retrieveMapbox(suggestion.mapbox_id, sessionToken)
+  async function handleSelectGoogle(suggestion) {
+    const resolved = await resolveGooglePlace(suggestion.placeId)
     if (!resolved) return
     setDropOpen(false)
     setQuery('')
-    setMapboxSuggs([])
+    setGoogleSuggs([])
     setAddingNew(resolved)
   }
 
@@ -1355,7 +1346,7 @@ function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) 
     )
   }
 
-  const showDrop = dropOpen && (matchingPlaces.length > 0 || mapboxSuggs.length > 0)
+  const showDrop = dropOpen && (matchingPlaces.length > 0 || googleSuggs.length > 0)
 
   return (
     <div className="ac-loc-search">
@@ -1384,14 +1375,14 @@ function LocationPicker({ value, onChange, places, accountId, onPlaceCreated }) 
               ))}
             </>
           )}
-          {mapboxSuggs.length > 0 && (
+          {googleSuggs.length > 0 && (
             <>
               <div className="ac-loc-dropdown__section">FROM MAP — saves as a new place</div>
-              {mapboxSuggs.map(s => (
-                <button key={s.mapbox_id} className="ac-loc-result ac-loc-result--map" onMouseDown={e => { e.preventDefault(); handleSelectMapbox(s) }}>
+              {googleSuggs.map(s => (
+                <button key={s.placeId} className="ac-loc-result ac-loc-result--map" onMouseDown={e => { e.preventDefault(); handleSelectGoogle(s) }}>
                   <div className="ac-loc-result__text">
                     <span className="ac-loc-result__name">{s.name}</span>
-                    <span className="ac-loc-result__addr">{s.place_formatted}</span>
+                    <span className="ac-loc-result__addr">{s.context}</span>
                   </div>
                   <span className="ac-loc-result__badge">+ New</span>
                 </button>

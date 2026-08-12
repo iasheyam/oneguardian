@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAlarmSound } from '../hooks/useAlarmSound'
+import { reverseGeocode } from '../../../shared/utils/googlePlaces'
 import './AlertModal.css'
 
 const LEVEL_META = {
@@ -29,11 +31,21 @@ function nowTime() {
 }
 
 export default function AlertModal({ alerts, onAction, onFalseAlarm, onAcknowledge, onUpdateNotes }) {
-  const [selectedId, setSelectedId] = useState(alerts[0]?.id ?? null)
+  const [selectedId, setSelectedId]       = useState(alerts[0]?.id ?? null)
+  const [resolvedAddress, setResolvedAddress] = useState(null)
+  const navigate = useNavigate()
 
   useAlarmSound(alerts.some(a => a.level === 'duress'))
 
   const alert = alerts.find(a => a.id === selectedId) ?? alerts[0]
+
+  useEffect(() => {
+    if (alert?.traccarAddress) { setResolvedAddress(alert.traccarAddress); return }
+    setResolvedAddress(null)
+    if (!alert?.lat || !alert?.lng) return
+    reverseGeocode(alert.lat, alert.lng).then(addr => setResolvedAddress(addr ?? null))
+  }, [alert?.id])
+
   if (!alert) return null
 
   const meta        = LEVEL_META[alert.level] ?? LEVEL_META.warning
@@ -98,8 +110,13 @@ export default function AlertModal({ alerts, onAction, onFalseAlarm, onAcknowled
         {/* ── alert details ── */}
         <div className="alert-details">
           <div className="alert-detail">
-            <span className="alert-detail__label">LOCATION</span>
-            <span className="alert-detail__value">{alert.location}</span>
+            <span className="alert-detail__label">LOCATION AT ALERT</span>
+            <span className="alert-detail__value">
+              {resolvedAddress ?? alert.location}
+              {resolvedAddress && alert.location !== '—' && (
+                <span className="alert-detail__coords"> · {alert.location}</span>
+              )}
+            </span>
           </div>
           {alert.speed > 0 && (
             <div className="alert-detail">
@@ -165,6 +182,20 @@ export default function AlertModal({ alerts, onAction, onFalseAlarm, onAcknowled
             <button className="alert-false-alarm-btn" onClick={() => onFalseAlarm(alert.id)}>
               Mark as False Alarm
             </button>
+            {alert.unitDbId && alert.unitType && (
+              <button
+                className="alert-unit-btn"
+                onClick={() => {
+                  const path = alert.unitType === 'principal'
+                    ? `/admin/unit/principal/${alert.unitDbId}`
+                    : `/admin/unit/vehicle/${alert.unitDbId}`
+                  onAcknowledge()
+                  navigate(path)
+                }}
+              >
+                View Unit
+              </button>
+            )}
             <button className="alert-ack-btn" onClick={onAcknowledge}>
               Acknowledge
             </button>

@@ -779,6 +779,8 @@ Runs the trigger engine against synthetic positions, marks any fired alerts as `
 ## Client API
 
 > For the mobile app. All routes use `/api/client/` prefix. Auth is the same Cognito JWT, but the caller must have a linked principal (`principals.userId = caller.id`). Returns `403` if no principal is linked.
+>
+> **Account-level authority:** All principals within an account share equal authority. Any principal can read and update any other principal or vehicle in the same account. There is no intra-account role hierarchy at this time.
 
 ### Auth note — `GET /api/me`
 `/api/me` now returns two additional fields for client users:
@@ -795,7 +797,7 @@ If both are `null`, the user has no linked principal and cannot access the clien
 ### `GET /api/client/account`
 **Auth:** authenticated + linked principal
 
-Returns the account the caller's principal belongs to. Includes all units in the account (id, type, name, status — no full detail). Use `/api/client/units/:id` for full detail.
+Returns the account the caller's principal belongs to. Includes all units in the account (id, type, name, status — no full detail). Use `/api/client/principals/:id` or `/api/client/vehicles/:id` for full detail.
 
 **Response**
 ```json
@@ -811,51 +813,97 @@ Returns the account the caller's principal belongs to. Includes all units in the
 
 ---
 
-### `GET /api/client/units/:id`
+### `GET /api/client/principals/:id`
 **Auth:** authenticated + linked principal
 
-Full detail for a single unit. The unit must belong to the caller's account — returns `404` otherwise.
+Full detail for a principal in the caller's account. Returns `404` if the principal does not belong to the account.
 
-**Response (person)**
+**Response**
 ```json
 {
   "id": "uuid",
-  "type": "person",
+  "accountId": "uuid",
+  "userId": "uuid | null",
   "name": "string",
   "role": "string | null",
   "phone": "string | null",
+  "email": "string | null",
   "status": "normal | warning | duress | offline",
+  "photoKey": "string | null",
   "primaryDeviceId": "uuid | null",
   "devices": [ /* device objects */ ],
-  "emergency": {
-    "bloodGroup": "string | null",
+  "medical": {
     "dob": "YYYY-MM-DD | null",
     "height": "string | null",
+    "bloodGroup": "string | null",
     "allergies": "string | null",
     "conditions": "string | null",
-    "medications": "string | null",
-    "contactName": "string | null",
-    "contactPhone": "string | null",
-    "contactRelation": "string | null"
+    "medications": "string | null"
+  },
+  "emergencyContact": {
+    "name": "string | null",
+    "phone": "string | null",
+    "relation": "string | null"
   }
 }
 ```
 
-**Response (vehicle)**
+---
+
+### `PATCH /api/client/principals/:id`
+**Auth:** authenticated + linked principal
+
+Update a principal in the caller's account. Same editable field whitelist as `PATCH /api/client/principal`.
+
+**Editable fields:** `name`, `phone`, `email`, `dob`, `height`, `bloodGroup`, `allergies`, `conditions`, `medications`, `emergContactName`, `emergContactPhone`, `emergContactRelation`
+
+**Response** — updated principal row (raw DB columns, same as `GET`).
+
+`400` if no valid fields. `404` if not in account.
+
+---
+
+### `GET /api/client/vehicles/:id`
+**Auth:** authenticated + linked principal
+
+Full detail for a vehicle in the caller's account. Returns `404` if the vehicle does not belong to the account.
+
+**Response**
 ```json
 {
   "id": "uuid",
-  "type": "vehicle",
-  "name": "string",
+  "accountId": "uuid",
+  "callsign": "string",
   "make": "string | null",
   "model": "string | null",
   "plate": "string | null",
   "armorLevel": "string | null",
   "status": "normal | warning | duress | offline",
+  "photoKey": "string | null",
   "primaryDeviceId": "uuid | null",
   "devices": [ /* device objects */ ]
 }
 ```
+
+---
+
+### `PATCH /api/client/vehicles/:id`
+**Auth:** authenticated + linked principal
+
+Update a vehicle in the caller's account.
+
+**Editable fields:** `callsign`, `make`, `model`, `plate`, `armorLevel`
+
+> `status` and `primaryDeviceId` are not editable — status is system-managed, device assignment is operator-managed.
+
+**Body**
+```json
+{ "callsign": "Alpha-1", "plate": "ABC-1234" }
+```
+
+**Response** — updated vehicle row (raw DB columns).
+
+`400` if no valid fields. `404` if not in account.
 
 ---
 
@@ -881,6 +929,78 @@ GET /api/client/live?token=<jwt>
 ```
 
 `alert` — alert fired for a unit in this account (same shape as operator alert SSE message).
+
+---
+
+### `GET /api/client/principal`
+**Auth:** authenticated + linked principal
+
+Returns the caller's own full principal record — profile, medical info, and emergency contact.
+
+**Response**
+```json
+{
+  "id": "uuid",
+  "accountId": "uuid",
+  "userId": "uuid",
+  "name": "string",
+  "role": "string | null",
+  "phone": "string | null",
+  "email": "string | null",
+  "status": "normal | warning | duress | offline",
+  "photoKey": "string | null",
+  "primaryDeviceId": "uuid | null",
+  "dob": "YYYY-MM-DD | null",
+  "height": "string | null",
+  "bloodGroup": "string | null",
+  "allergies": "string | null",
+  "conditions": "string | null",
+  "medications": "string | null",
+  "emergContactName": "string | null",
+  "emergContactPhone": "string | null",
+  "emergContactRelation": "string | null",
+  "createdAt": "ISO8601",
+  "updatedAt": "ISO8601"
+}
+```
+
+---
+
+### `PATCH /api/client/principal`
+**Auth:** authenticated + linked principal
+
+Update the caller's own principal profile. Only the fields listed below are accepted — any other keys are silently ignored.
+
+**Editable fields**
+| Field | Description |
+|-------|-------------|
+| `name` | Display name |
+| `phone` | Contact phone |
+| `email` | Contact email |
+| `dob` | Date of birth (`YYYY-MM-DD`) |
+| `height` | Height (free text, e.g. `"5'11"`) |
+| `bloodGroup` | Blood group (free text) |
+| `allergies` | Allergies (free text) |
+| `conditions` | Medical conditions (free text) |
+| `medications` | Current medications (free text) |
+| `emergContactName` | Emergency contact name |
+| `emergContactPhone` | Emergency contact phone |
+| `emergContactRelation` | Emergency contact relation |
+
+> **Not editable by the client:** `status`, `primaryDeviceId`, `photoKey`, `accountId`, `userId`. Status is operator-managed. Use `PATCH /api/client/principal/primary-device` for device promotion.
+
+**Body** — send only the fields to update:
+```json
+{
+  "emergContactName": "Maria Hernández",
+  "emergContactPhone": "+502 5555 1234",
+  "emergContactRelation": "Spouse"
+}
+```
+
+**Response** — updated principal row (same shape as `GET /api/client/principal`).
+
+`400` if no valid fields are provided.
 
 ---
 

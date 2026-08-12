@@ -20,12 +20,12 @@ B2B. Clients are onboarded by internal Telematics Guardian staff — not self-se
 
 ## Tech stack
 
-- **Frontend**: React 18 + Vite SPA, plain CSS with `--adm-*` CSS variables, React Router v6
+- **Frontend**: React 18 + Vite SPA, plain CSS with `--adm-*` CSS variables, React Router v6. Required env: `VITE_API_URL` (backend base URL — `http://localhost:3001` locally, EC2 public URL in production). This var is missing from `.env` and must be added manually.
 - **Backend**: Express 5, Node.js ESM
 - **Database**: PostgreSQL on AWS RDS, Drizzle ORM
 - **Auth**: AWS Cognito (invite-only, no self-signup), JWT via Authorization header
 - **Tracking**: Traccar server (self-hosted), WebSocket feed → position cache → trigger engine
-- **Maps**: Mapbox (`react-map-gl/mapbox`, dark-v11 style), token at `VITE_MAPBOX_TOKEN`. Used in live map, unit detail, and place/plan forms. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for geocoding/POI search — Mapbox renders, Google searches. Also used for reverse geocoding (`reverseGeocode`) and timezone lookup (`getTimezoneId`) in `src/shared/utils/googlePlaces.js` — drives the unit detail live tab.
+- **Maps**: Mapbox (`react-map-gl/mapbox`, dark-v11 style), token at `VITE_MAPBOX_TOKEN`. Used in live map, unit detail, and place/plan forms. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for all location search — Mapbox renders, Google searches. `searchGoogle`/`retrieveGoogle` power the place/plan forms (`PlaceForm`, `LocationPicker` in `Accounts.jsx`). `reverseGeocode`/`getTimezoneId` drive the unit detail live tab. All functions in `src/shared/utils/googlePlaces.js`. Mapbox Searchbox API is no longer used.
 - **Real-time**: SSE via `/api/live` endpoint, shared `server/sse.js` broadcast module
 - **Storage**: AWS S3 (photos, logos)
 - **Migrations**: Direct SQL via Node.js scripts (drizzle-kit has TTY issues in this env)
@@ -188,10 +188,15 @@ Centralized overlay rendered inside every `<Map>` as a child. Uses `useMap()` ho
 - Used in: Dashboard, MapStudio, PrincipalDetail, VehicleDetail
 
 ### Client API (`/api/client/` prefix)
-For the mobile app. All routes require a valid JWT **and** a principal linked to the caller (`principals.userId = caller.id`). Returns `403` if not linked.
+For the mobile app. All routes require a valid JWT **and** a principal linked to the caller (`principals.userId = caller.id`). Returns `403` if not linked. All principals within an account share equal authority — any principal can read and update any other principal or vehicle in the same account. No intra-account role hierarchy at this time.
 - `GET /api/client/account` — account info + flat unit roster
-- `GET /api/client/units/:id` — full unit detail (verifies unit belongs to caller's account)
+- `GET /api/client/principals/:id` — full principal detail (must be in caller's account); includes `medical` and `emergencyContact` nested objects
+- `PATCH /api/client/principals/:id` — update principal; same whitelist as own-principal PATCH
+- `GET /api/client/vehicles/:id` — full vehicle detail (must be in caller's account)
+- `PATCH /api/client/vehicles/:id` — update vehicle; whitelist: `callsign`, `make`, `model`, `plate`, `armorLevel`
 - `GET /api/client/live?token=<jwt>` — account-scoped SSE
+- `GET /api/client/principal` — caller's own full principal record (profile + medical + emergency contact)
+- `PATCH /api/client/principal` — update own profile; whitelist: `name`, `phone`, `email`, medical fields, `emergContact*`; `status`/`primaryDeviceId`/`photoKey` not editable here
 - `GET /api/client/principal/devices` — list devices on caller's own principal
 - `POST /api/client/principal/devices` — register a device; `type` defaults to `"phone"` if omitted, auto-sets as `primaryDeviceId` if principal has none
 - `PATCH /api/client/principal/devices/:deviceId` — edit `name` / `model` only
