@@ -9,6 +9,8 @@ import { reverseGeocode, getTimezoneId } from '../../../shared/utils/googlePlace
 import { MapControls, MAP_STYLES } from '../components/MapControls'
 import ZoneLayers from '../components/ZoneLayers'
 import MarkerPins from '../components/MarkerPins'
+import { UNIT_STATUS as STATUS_META } from '../../../shared/constants/status.js'
+import { useTheme } from '../../../shared/hooks/useTheme'
 import './UnitDetail.css'
 
 function toLocalDt(date) {
@@ -55,13 +57,7 @@ function sliceRoute(coords, progress) {
 }
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const INITIAL_VIEW = { longitude: -90.5069, latitude: 14.5980, zoom: 13 }
-const STATUS_META = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  offline: { color: '#66727A', label: 'OFFLINE' },
-}
+const INITIAL_VIEW = { longitude: -90.5069, latitude: 14.5980, zoom: 13, pitch: 45, bearing: 0 }
 
 export default function PrincipalDetail() {
   const { id }       = useParams()
@@ -70,7 +66,10 @@ export default function PrincipalDetail() {
   const positions    = useLivePositions()
 
   const [tab, setTab]           = useState('live')
-  const [mapStyle, setMapStyle] = useState('dark')
+  const theme     = useTheme()
+  const baseStyle = theme === 'light' ? 'light' : 'dark'
+  const [mapStyle, setMapStyle] = useState(baseStyle)
+  useEffect(() => { setMapStyle(s => s === 'satellite' ? s : baseStyle) }, [baseStyle])
   const [fullscreen, setFullscreen] = useState(false)
   const [routeCoords,   setRouteCoords]   = useState([])
   const [routeProgress, setRouteProgress] = useState(100)
@@ -220,11 +219,11 @@ export default function PrincipalDetail() {
             {/* Avatar */}
             <div style={{
               width: 52, height: 52, borderRadius: '50%',
-              background: '#1A2226',
+              background: 'var(--adm-bg-panel)',
               border: '2px solid rgba(255,255,255,0.08)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: 'var(--adm-mono)', fontSize: 16, fontWeight: 700,
-              color: '#AEB8BD', flexShrink: 0, overflow: 'hidden',
+              color: 'var(--adm-text-muted)', flexShrink: 0, overflow: 'hidden',
             }}>
               {unit.photoUrl
                 ? <img src={unit.photoUrl} alt={unit.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -250,7 +249,7 @@ export default function PrincipalDetail() {
                 fontSize: 9,
                 fontWeight: 600,
                 letterSpacing: '0.08em',
-                color: '#37C2B8',
+                color: '#22D3EE',
                 background: 'rgba(55,194,184,0.12)',
                 border: '1px solid rgba(55,194,184,0.35)',
                 padding: '2px 7px',
@@ -317,7 +316,7 @@ export default function PrincipalDetail() {
           mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
-          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} baseStyle={baseStyle} />
           <ZoneLayers />
           <MarkerPins />
 
@@ -341,9 +340,9 @@ export default function PrincipalDetail() {
               <Marker key={device.id} longitude={pos.longitude} latitude={pos.latitude} anchor="center">
                 <div className="ud-live-marker">
                   <div className="ud-marker-dot-wrap">
-                    <span className="ud-marker-dot" style={{ background: '#E0A63C', boxShadow: '0 0 10px #E0A63C88', width: 10, height: 10 }} />
+                    <span className="ud-marker-dot" style={{ background: '#FB923C', boxShadow: '0 0 10px #FB923C88', width: 10, height: 10 }} />
                   </div>
-                  <span className="ud-marker-label" style={{ borderColor: '#E0A63C55', color: '#E0A63C' }}>
+                  <span className="ud-marker-label" style={{ borderColor: '#FB923C55', color: '#FB923C' }}>
                     {device.name} · {spd} kph
                   </span>
                 </div>
@@ -359,7 +358,7 @@ export default function PrincipalDetail() {
               </Source>
               {completedCoords.length >= 2 && (
                 <Source id="route-done" type="geojson" data={{ type: 'Feature', geometry: { type: 'LineString', coordinates: completedCoords } }}>
-                  <Layer id="route-done-line" type="line" paint={{ 'line-color': '#37C2B8', 'line-width': 2.5 }} />
+                  <Layer id="route-done-line" type="line" paint={{ 'line-color': '#22D3EE', 'line-width': 2.5 }} />
                 </Source>
               )}
               {playhead && (
@@ -402,7 +401,7 @@ export default function PrincipalDetail() {
         )}
 
         {tab === 'history' && loadingRoute && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,14,16,0.6)', color: '#AEB8BD', fontFamily: 'var(--adm-mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42,0.6)', color: 'var(--adm-text-muted)', fontFamily: 'var(--adm-mono)', fontSize: 11, letterSpacing: '0.1em' }}>
             LOADING HISTORY…
           </div>
         )}
@@ -423,12 +422,12 @@ export default function PrincipalDetail() {
                 <div className="ud-person-stats">
                   <div className="ud-stat-tile">
                     <span className="ud-stat-tile__label">POSITIONS</span>
-                    <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>{routeCoords.length}</span>
+                    <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)' }}>{routeCoords.length}</span>
                     <span className="ud-stat-tile__sub">Recorded in last 8h</span>
                   </div>
                   <div className="ud-stat-tile">
                     <span className="ud-stat-tile__label">PLAYBACK</span>
-                    <span className="ud-stat-tile__value" style={{ color: '#37C2B8' }}>{routeProgress}%</span>
+                    <span className="ud-stat-tile__value" style={{ color: '#22D3EE' }}>{routeProgress}%</span>
                     <span className="ud-stat-tile__sub">Use scrubber to replay</span>
                   </div>
                 </div>
@@ -449,7 +448,7 @@ export default function PrincipalDetail() {
                   <ul className="ud-events">
                     {unit.devices.map(dev => (
                       <li key={dev.id} className="ud-event" style={{ alignItems: 'center' }}>
-                        <span className="ud-event__dot" style={{ background: dev.status === 'online' ? '#37C2B8' : '#66727A', boxShadow: dev.status === 'online' ? '0 0 6px #37C2B888' : 'none', flexShrink: 0 }} />
+                        <span className="ud-event__dot" style={{ background: dev.status === 'online' ? '#22D3EE' : '#64748B', boxShadow: dev.status === 'online' ? '0 0 6px #22D3EE88' : 'none', flexShrink: 0 }} />
                         <span className="ud-event__time" style={{ textTransform: 'uppercase' }}>{dev.type}</span>
                         <span className="ud-event__text">{dev.name}{dev.serial ? ` · ${dev.serial}` : ''}</span>
                       </li>
@@ -482,10 +481,10 @@ function PersonStats({ livePos, liveDeviceCount, address, timezone, now }) {
     ? Math.floor((now - new Date(livePos.serverTime).getTime()) / 1000)
     : null
 
-  const batteryColor = battery === null ? '#66727A'
-    : battery < 20 ? '#F2495B'
-    : battery < 40 ? '#E0A63C'
-    : '#37C2B8'
+  const batteryColor = battery === null ? '#64748B'
+    : battery < 20 ? '#F43F5E'
+    : battery < 40 ? '#FB923C'
+    : '#22D3EE'
 
   return (
     <div className="ud-section">
@@ -510,7 +509,7 @@ function PersonStats({ livePos, liveDeviceCount, address, timezone, now }) {
       <div className="ud-person-stats">
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">LOCAL TIME</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+          <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
             {localTime ?? '—'}
           </span>
           <span className="ud-stat-tile__sub">{timezone ? timezone.replace(/_/g, ' ') : 'At location'}</span>
@@ -518,7 +517,7 @@ function PersonStats({ livePos, liveDeviceCount, address, timezone, now }) {
 
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">SPEED</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>
+          <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)' }}>
             {speedKph ?? '—'}
           </span>
           <span className="ud-stat-tile__sub">{livePos ? 'kph' : 'No signal'}</span>
@@ -527,7 +526,7 @@ function PersonStats({ livePos, liveDeviceCount, address, timezone, now }) {
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">MOTION</span>
           <span className="ud-stat-tile__value"
-            style={{ color: motion === 'Moving' ? '#37C2B8' : motion === 'Stationary' ? '#AEB8BD' : '#66727A', fontSize: 14 }}>
+            style={{ color: motion === 'Moving' ? '#22D3EE' : motion === 'Stationary' ? 'var(--adm-text-muted)' : '#64748B', fontSize: 14 }}>
             {motion ?? '—'}
           </span>
           <span className="ud-stat-tile__sub">State</span>
@@ -556,7 +555,7 @@ function LiveRight({ livePos, liveDeviceCount, now }) {
 
   const attrs      = livePos.attributes ?? {}
   const signalSecs = Math.floor((now - new Date(livePos.serverTime).getTime()) / 1000)
-  const signalColor = signalSecs < 30 ? '#37C2B8' : signalSecs < 120 ? '#E0A63C' : '#F2495B'
+  const signalColor = signalSecs < 30 ? '#22D3EE' : signalSecs < 120 ? '#FB923C' : '#F43F5E'
   const signalText  = signalSecs < 60
     ? `${signalSecs}s ago`
     : `${Math.floor(signalSecs / 60)}m ${signalSecs % 60}s ago`
@@ -613,17 +612,17 @@ function DevicesRight({ devices }) {
       <div className="ud-person-stats">
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">TOTAL</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>{devices.length}</span>
+          <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)' }}>{devices.length}</span>
           <span className="ud-stat-tile__sub">Assigned devices</span>
         </div>
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">ONLINE</span>
-          <span className="ud-stat-tile__value" style={{ color: online > 0 ? '#37C2B8' : '#66727A' }}>{online}</span>
+          <span className="ud-stat-tile__value" style={{ color: online > 0 ? '#22D3EE' : '#64748B' }}>{online}</span>
           <span className="ud-stat-tile__sub">Active</span>
         </div>
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">OFFLINE</span>
-          <span className="ud-stat-tile__value" style={{ color: offline > 0 ? '#E0A63C' : '#66727A' }}>{offline}</span>
+          <span className="ud-stat-tile__value" style={{ color: offline > 0 ? '#FB923C' : '#64748B' }}>{offline}</span>
           <span className="ud-stat-tile__sub">No signal</span>
         </div>
       </div>
@@ -637,9 +636,9 @@ function DeviceCard({ dev }) {
   return (
     <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${isOnline ? 'rgba(55,194,184,0.2)' : 'rgba(255,255,255,0.05)'}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#37C2B8' : '#66727A', boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#EEF2F3', flex: 1 }}>{dev.name}</span>
-        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isOnline ? '#37C2B8' : '#66727A' }}>{dev.status}</span>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#22D3EE' : '#64748B', boxShadow: isOnline ? '0 0 6px #22D3EE88' : 'none', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--adm-text)', flex: 1 }}>{dev.name}</span>
+        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isOnline ? '#22D3EE' : '#64748B' }}>{dev.status}</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
         {[
@@ -652,7 +651,7 @@ function DeviceCard({ dev }) {
         ].filter(([, v]) => v).map(([label, value]) => (
           <div key={label}>
             <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 8, fontWeight: 600, letterSpacing: '0.1em', color: '#4A5A62', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
-            <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 11, color: '#AEB8BD' }}>{value}</div>
+            <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 11, color: 'var(--adm-text-muted)' }}>{value}</div>
           </div>
         ))}
       </div>
@@ -747,7 +746,7 @@ function ProfileField({ label, value, mono, highlight }) {
       <span style={{
         fontSize: 13,
         lineHeight: 1.4,
-        color: highlight ? '#F2495B' : 'var(--adm-text-muted)',
+        color: highlight ? '#F43F5E' : 'var(--adm-text-muted)',
         fontWeight: highlight ? 600 : 400,
         fontFamily: mono ? 'var(--adm-mono)' : undefined,
         letterSpacing: mono ? '0.04em' : undefined,

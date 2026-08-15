@@ -1,0 +1,128 @@
+/* ── Telematics Guardian — design tokens ─────────────────────────────────────
+   Tuned for operator LCD/LED monitors: wider surface luminance steps,
+   all text levels meet WCAG AA, status colors pushed brighter.
+   Dark is the default (ops tool). Light overrides follow via media query.
+   All admin CSS consumes these; no other file should redefine --adm-* vars.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* backgrounds — wider luminance steps for clear hierarchy on cheap displays */
+  --adm-bg-base:    #060C18;   /* deep canvas (L=0.004)                 */
+  --adm-bg-panel:   #162840;   /* sidebar / topbar (L=0.021, ×4.5 base) */
+  --adm-bg-raised:  #233C56;   /* cards, inputs (L=0.043, ×2 panel)     */
+
+  /* borders */
+  --adm-border:     #2E4C66;   /* main separators                       */
+  --adm-border-sub: #0C1C2C;   /* inner / subtle separators             */
+
+  /* section / account headers — always dark, white text */
+  --adm-bg-header:       #0A1628;
+  --adm-bg-header-hover: #112038;
+  --adm-border-header:   #1A3050;
+
+  /* text — all levels ≥ 4.5:1 on panel */
+  --adm-text:       #FFFFFF;   /* primary  (21:1 on panel)              */
+  --adm-text-muted: #B2C8D8;   /* secondary (8.6:1 on panel)            */
+  --adm-text-dim:   #8AA4BC;   /* tertiary  (5.7:1 on panel)            */
+
+  /* status */
+  --adm-secure:  #26DEFF;      /* cyan   — 11.9:1 on base               */
+  --adm-warning: #FF9830;      /* amber  —  9.0:1 on base               */
+  --adm-duress:  #FF3D66;      /* red    —  5.7:1 on base               */
+  --adm-offline: #607888;      /* slate                                 */
+  --adm-success: #2EECAA;      /* teal   — 12.6:1 on base               */
+
+  /* RGB channels for rgba() — usage: rgb(var(--adm-secure-rgb) / 0.15) */
+  --adm-secure-rgb:  38 222 255;
+  --adm-warning-rgb: 255 152 48;
+  --adm-duress-rgb:  255 61 102;
+  --adm-success-rgb: 46 236 170;
+
+  /* typography */
+  --adm-sans: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --adm-mono: 'IBM Plex Mono', 'Courier New', monospace;
+
+  /* layout constants */
+  --adm-nav-w:    56px;
+  --adm-topbar-h: 52px;
+
+  /* aliases for naming variants used across page CSS files */
+  --adm-bg:             var(--adm-bg-base);
+  --adm-bg-hover:       var(--adm-bg-raised);
+  --adm-border-active:  var(--adm-secure);
+  --adm-text-primary:   var(--adm-text);
+  --adm-text-secondary: var(--adm-text-muted);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --adm-bg-base:    #E6EDF5;
+    --adm-bg-panel:   #F6F9FC;
+    --adm-bg-raised:  #D9E4F0;
+    --adm-border:     #9AB4C8;
+    --adm-border-sub: #C6D8E8;
+    --adm-text:       #050C1A;
+    --adm-text-muted: #1E3C58;
+    --adm-text-dim:   #425E74;
+    --adm-secure:     #005888;
+    --adm-warning:    #B24000;
+    --adm-duress:     #B50028;
+    --adm-offline:    #5E7888;
+    --adm-success:    #005A3E;
+    --adm-secure-rgb:  0 88 136;
+    --adm-warning-rgb: 178 64 0;
+    --adm-duress-rgb:  181 0 40;
+    --adm-success-rgb: 0 90 62;
+
+    --adm-bg-header:       #1A3A5C;
+    --adm-bg-header-hover: #254E78;
+    --adm-border-header:   #0D2642;
+  }
+}
+
+/* explicit toggle overrides */
+:root[data-theme="dark"] {
+  --adm-bg-base:    #060C18;
+  --adm-bg-panel:   #162840;
+  --adm-bg-raised:  #233C56;
+  --adm-border:     #2E4C66;
+  --adm-border-sub: #0C1C2C;
+  --adm-text:       #FFFFFF;
+  --adm-text-muted: #B2C8D8;
+  --adm-text-dim:   #8AA4BC;
+  --adm-secure:     #26DEFF;
+  --adm-warning:    #FF9830;
+  --adm-duress:     #FF3D66;
+  --adm-offline:    #607888;
+  --adm-success:    #2EECAA;
+  --adm-secure-rgb:  38 222 255;
+  --adm-warning-rgb: 255 152 48;
+  --adm-duress-rgb:  255 61 102;
+  --adm-success-rgb: 46 236 170;
+  --adm-bg-header:       #0A1628;
+  --adm-bg-header-hover: #112038;
+  --adm-border-header:   #1A3050;
+}
+
+:root[data-theme="light"] {
+  --adm-bg-base:    #E6EDF5;
+  --adm-bg-panel:   #F6F9FC;
+  --adm-bg-raised:  #D9E4F0;
+  --adm-border:     #9AB4C8;
+  --adm-border-sub: #C6D8E8;
+  --adm-text:       #050C1A;
+  --adm-text-muted: #1E3C58;
+  --adm-text-dim:   #425E74;
+  --adm-secure:     #005888;
+  --adm-warning:    #B24000;
+  --adm-duress:     #B50028;
+  --adm-offline:    #5E7888;
+  --adm-success:    #005A3E;
+  --adm-secure-rgb:  0 88 136;
+  --adm-warning-rgb: 178 64 0;
+  --adm-duress-rgb:  181 0 40;
+  --adm-success-rgb: 0 90 62;
+  --adm-bg-header:       #1A3A5C;
+  --adm-bg-header-hover: #254E78;
+  --adm-border-header:   #0D2642;
+}

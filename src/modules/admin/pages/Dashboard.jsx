@@ -8,16 +8,11 @@ import { MapSearch, SearchPinMarker } from '../components/MapSearch'
 import { MapControls, MAP_STYLES, UpuRow } from '../components/MapControls'
 import ZoneLayers from '../components/ZoneLayers'
 import MarkerPins from '../components/MarkerPins'
+import { UNIT_STATUS as STATUS_META } from '../../../shared/constants/status.js'
+import { useTheme } from '../../../shared/hooks/useTheme'
 import './Dashboard.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-
-const STATUS_META = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  offline: { color: '#66727A', label: 'OFFLINE' },
-}
 
 const FILTER_DEFS = [
   { key: 'all',     label: 'ALL'     },
@@ -30,6 +25,8 @@ const INITIAL_VIEW = {
   longitude: 0,
   latitude:  20,
   zoom:      1.8,
+  pitch:     45,
+  bearing:   0,
 }
 
 function haversineKm(lat1, lng1, lat2, lng2) {
@@ -52,7 +49,10 @@ export default function Dashboard() {
   const [search,       setSearch]     = useState('')
   const [selectedId,   setSelectedId] = useState(null)
   const [popupId,      setPopupId]    = useState(null)
-  const [mapStyle, setMapStyle] = useState('dark')
+  const theme    = useTheme()
+  const baseStyle = theme === 'light' ? 'light' : 'dark'
+  const [mapStyle, setMapStyle] = useState(baseStyle)
+  useEffect(() => { setMapStyle(s => s === 'satellite' ? s : baseStyle) }, [baseStyle])
   const [searchPin,       setSearchPin]       = useState(null)
 
   // Flatten all real units across accounts; attach primary device live position
@@ -70,6 +70,7 @@ export default function Dashboard() {
           name:        unit.name,
           type:        unit.type,
           status:      unit.status ?? 'offline',
+          accountId:   acc.id,
           accountName: acc.name,
           isLive:      !!pos,
           lat:         pos?.latitude  ?? null,
@@ -97,15 +98,35 @@ export default function Dashboard() {
       .filter(u => !q || [u.name, u.accountName].join(' ').toLowerCase().includes(q))
   }, [displayUnits, filter, search])
 
-  const groups = useMemo(() => {
+  const [collapsedAccounts, setCollapsedAccounts] = useState(new Set())
+
+  function toggleAccount(accountId) {
+    setCollapsedAccounts(prev => {
+      const next = new Set(prev)
+      next.has(accountId) ? next.delete(accountId) : next.add(accountId)
+      return next
+    })
+  }
+
+  const accountGroups = useMemo(() => {
     const byStatus = (a, b) => {
       const order = { duress: 0, warning: 1, normal: 2, offline: 3 }
       return (order[a.status] ?? 4) - (order[b.status] ?? 4)
     }
-    return {
-      vehicles: filtered.filter(u => u.type === 'vehicle').sort(byStatus),
-      people:   filtered.filter(u => u.type === 'person').sort(byStatus),
+    const byAccount = new globalThis.Map()
+    for (const unit of filtered) {
+      if (!byAccount.has(unit.accountId)) {
+        byAccount.set(unit.accountId, { accountId: unit.accountId, accountName: unit.accountName, principals: [], vehicles: [] })
+      }
+      const g = byAccount.get(unit.accountId)
+      if (unit.type === 'person') g.principals.push(unit)
+      else g.vehicles.push(unit)
     }
+    return Array.from(byAccount.values()).map(g => ({
+      ...g,
+      principals: g.principals.sort(byStatus),
+      vehicles:   g.vehicles.sort(byStatus),
+    }))
   }, [filtered])
 
   // Only units with a live position get a map marker
@@ -173,7 +194,7 @@ export default function Dashboard() {
               <button
                 key={tab.key}
                 className={`filter-tab${active ? ' active' : ''}`}
-                style={active && statusColor ? { background: statusColor, borderColor: statusColor, color: '#0A0E10' } : {}}
+                style={active && statusColor ? { background: statusColor, borderColor: statusColor, color: '#0F172A' } : {}}
                 onClick={() => setFilter(tab.key)}
               >
                 {tab.label}
@@ -195,29 +216,50 @@ export default function Dashboard() {
         </div>
 
         <ul className="unit-list" role="list">
-          {filtered.length === 0 && (
+          {accountGroups.length === 0 && (
             <li className="unit-list__empty">
               {accounts.length === 0 ? 'Loading…' : 'No units match'}
             </li>
           )}
 
-          {groups.vehicles.length > 0 && (
-            <>
-              <UnitGroupHeader label="VEHICLES" count={groups.vehicles.length} />
-              {groups.vehicles.map(unit => (
-                <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
-              ))}
-            </>
-          )}
+          {accountGroups.map(group => {
+            const collapsed = collapsedAccounts.has(group.accountId)
+            const total = group.principals.length + group.vehicles.length
+            return (
+              <li key={group.accountId} className="account-group">
+                <button
+                  className="account-group__header"
+                  onClick={() => toggleAccount(group.accountId)}
+                  aria-expanded={!collapsed}
+                >
+                  <span className="account-group__name">{group.accountName}</span>
+                  <span className="account-group__count">{total}</span>
+                  <span className={`account-group__chevron${collapsed ? '' : ' open'}`}>›</span>
+                </button>
 
-          {groups.people.length > 0 && (
-            <>
-              <UnitGroupHeader label="PEOPLE" count={groups.people.length} />
-              {groups.people.map(unit => (
-                <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
-              ))}
-            </>
-          )}
+                {!collapsed && (
+                  <ul className="account-group__body" role="list">
+                    {group.principals.length > 0 && (
+                      <>
+                        <UnitTypeHeader label="PRINCIPALS" count={group.principals.length} />
+                        {group.principals.map(unit => (
+                          <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
+                        ))}
+                      </>
+                    )}
+                    {group.vehicles.length > 0 && (
+                      <>
+                        <UnitTypeHeader label="VEHICLES" count={group.vehicles.length} />
+                        {group.vehicles.map(unit => (
+                          <UnitCardItem key={unit.id} unit={unit} selected={unit.id === selectedId} onSelect={selectUnit} />
+                        ))}
+                      </>
+                    )}
+                  </ul>
+                )}
+              </li>
+            )
+          })}
         </ul>
       </aside>
 
@@ -236,7 +278,7 @@ export default function Dashboard() {
           <MarkerPins />
 
           <MapSearch onFlyTo={flyToPlace} onPin={setSearchPin} />
-          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} baseStyle={baseStyle} />
 
           {searchPin && (
             <Marker longitude={searchPin.lng} latitude={searchPin.lat} anchor="bottom">
@@ -272,7 +314,7 @@ export default function Dashboard() {
                       }}
                     />
                   </div>
-                  <span className="marker-label" style={{ color: isSel ? '#EEF2F3' : '#AEB8BD', borderColor: `${meta.color}66` }}>
+                  <span className="marker-label" style={{ color: isSel ? 'var(--adm-text)' : 'var(--adm-text-muted)', borderColor: `${meta.color}66` }}>
                     {unit.name}
                   </span>
                 </div>
@@ -306,7 +348,7 @@ export default function Dashboard() {
                     {unit.speed != null && <UpuRow k="SPEED" v={`${unit.speed} KPH`} />}
                     {unit.heading != null && <UpuRow k="HEADING" v={`${unit.heading}°`} />}
                     <UpuRow k="COORDS" v={`${unit.lat.toFixed(5)}, ${unit.lng.toFixed(5)}`} />
-                    <UpuRow k="SIGNAL" v="● LIVE" color="#37C2B8" />
+                    <UpuRow k="SIGNAL" v="● LIVE" color="#22D3EE" />
                   </div>
                   <button className="upu-open" onClick={() => navigate(detailPath)}>
                     OPEN DETAIL →
@@ -327,6 +369,15 @@ function UnitGroupHeader({ label, count }) {
       <span className="unit-group-header__label">{label}</span>
       <span className="unit-group-header__line" aria-hidden />
       <span className="unit-group-header__count">{count}</span>
+    </li>
+  )
+}
+
+function UnitTypeHeader({ label, count }) {
+  return (
+    <li className="unit-type-header" aria-label={`${label} section`}>
+      <span className="unit-type-header__label">{label}</span>
+      <span className="unit-type-header__count">{count}</span>
     </li>
   )
 }
@@ -357,20 +408,18 @@ function UnitCardItem({ unit, selected, onSelect }) {
           </span>
         </div>
 
-        <div className="unit-card__principal">{unit.accountName}</div>
-
         <div className="unit-card__info">
-          <span className="unit-card__loc" style={{ color: unit.isLive ? '#37C2B8' : undefined }}>
+          <span className="unit-card__loc" style={{ color: unit.isLive ? '#22D3EE' : undefined }}>
             {unit.isLive ? '● LIVE' : 'No signal'}
           </span>
-          <span className="unit-card__speed" style={{ color: unit.isLive ? '#37C2B8' : '#66727A' }}>
+          <span className="unit-card__speed" style={{ color: unit.isLive ? '#22D3EE' : '#64748B' }}>
             {unit.isLive ? `${unit.speed} KPH` : '—'}
           </span>
         </div>
 
         {selected && (
           <div className="unit-card__footer">
-            <span className="unit-card__updated" style={unit.isLive ? { color: '#37C2B8' } : undefined}>
+            <span className="unit-card__updated" style={unit.isLive ? { color: '#22D3EE' } : undefined}>
               {unit.isLive ? '● LIVE' : 'No signal'}
             </span>
             <button className="unit-card__open" onClick={e => { e.stopPropagation(); navigate(detailPath) }}>

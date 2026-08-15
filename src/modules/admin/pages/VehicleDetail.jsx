@@ -8,17 +8,12 @@ import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import { MapControls, MAP_STYLES } from '../components/MapControls'
 import ZoneLayers from '../components/ZoneLayers'
 import MarkerPins from '../components/MarkerPins'
+import { UNIT_STATUS as STATUS_META } from '../../../shared/constants/status.js'
+import { useTheme } from '../../../shared/hooks/useTheme'
 import './UnitDetail.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const INITIAL_VIEW = { longitude: -90.5069, latitude: 14.5980, zoom: 13 }
-
-const STATUS_META = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  offline: { color: '#66727A', label: 'OFFLINE' },
-}
+const INITIAL_VIEW = { longitude: -90.5069, latitude: 14.5980, zoom: 13, pitch: 45, bearing: 0 }
 
 function interpolateRoute(coords, progress) {
   if (!coords || coords.length === 0) return null
@@ -89,7 +84,10 @@ export default function VehicleDetail() {
   const attrs   = livePos?.attributes ?? {}
 
   const [tab,           setTab]           = useState('live')
-  const [mapStyle,      setMapStyle]      = useState('dark')
+  const theme     = useTheme()
+  const baseStyle = theme === 'light' ? 'light' : 'dark'
+  const [mapStyle, setMapStyle] = useState(baseStyle)
+  useEffect(() => { setMapStyle(s => s === 'satellite' ? s : baseStyle) }, [baseStyle])
   const [routeCoords,   setRouteCoords]   = useState([])
   const [routeProgress, setRouteProgress] = useState(100)
   const [loadingRoute,  setLoadingRoute]  = useState(false)
@@ -161,49 +159,49 @@ export default function VehicleDetail() {
       label: 'IGNITION',
       value: attrs.ignition !== undefined ? (attrs.ignition ? 'ON' : 'OFF') : '—',
       sub:   attrs.ignition ? 'Engine running' : 'Engine off',
-      color: attrs.ignition ? '#37C2B8' : '#66727A',
+      color: attrs.ignition ? '#22D3EE' : '#64748B',
     },
     {
       label: 'SPEED',
       value: speed !== null ? `${speed} KPH` : '—',
       sub:   heading !== null ? `HDG ${Math.round(heading)}°` : 'No signal',
-      color: '#DFE4E6',
+      color: 'var(--adm-text-muted)',
     },
     {
       label: 'FUEL',
       value: attrs.fuel !== undefined ? `${Math.round(attrs.fuel)}%` : '—',
       sub:   'Fuel level',
-      color: attrs.fuel !== undefined && attrs.fuel < 35 ? '#E0A63C' : '#DFE4E6',
+      color: attrs.fuel !== undefined && attrs.fuel < 35 ? '#FB923C' : 'var(--adm-text-muted)',
     },
     {
       label: 'BATTERY',
       value: attrs.batteryLevel !== undefined ? `${Math.round(attrs.batteryLevel)}%` : '—',
       sub:   '12V system',
-      color: attrs.batteryLevel !== undefined && attrs.batteryLevel < 30 ? '#E0A63C' : '#DFE4E6',
+      color: attrs.batteryLevel !== undefined && attrs.batteryLevel < 30 ? '#FB923C' : 'var(--adm-text-muted)',
     },
     {
       label: 'ALTITUDE',
       value: livePos?.altitude !== undefined ? `${Math.round(livePos.altitude)} m` : '—',
       sub:   'Above sea level',
-      color: '#DFE4E6',
+      color: 'var(--adm-text-muted)',
     },
     {
       label: 'ARMOR',
       value: vehicle.armorLevel ?? '—',
       sub:   'Protection rating',
-      color: '#DFE4E6',
+      color: 'var(--adm-text-muted)',
     },
     {
       label: 'PLATE',
       value: vehicle.plate ?? '—',
       sub:   vehicle.make ? `${vehicle.make} ${vehicle.model ?? ''}`.trim() : 'License plate',
-      color: '#AEB8BD',
+      color: 'var(--adm-text-muted)',
     },
     {
       label: 'SIGNAL',
       value: isLive ? 'LIVE' : 'OFFLINE',
       sub:   isLive ? 'Receiving updates' : 'No GPS signal',
-      color: isLive ? '#37C2B8' : '#66727A',
+      color: isLive ? '#22D3EE' : '#64748B',
     },
   ]
 
@@ -221,7 +219,7 @@ export default function VehicleDetail() {
               {meta.label}
             </span>
             {isLive && (
-              <span style={{ fontFamily: 'var(--adm-mono)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em', color: '#37C2B8', marginLeft: 4 }}>
+              <span style={{ fontFamily: 'var(--adm-mono)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.1em', color: '#22D3EE', marginLeft: 4 }}>
                 ● LIVE
               </span>
             )}
@@ -243,12 +241,12 @@ export default function VehicleDetail() {
         <Map
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
-          initialViewState={lat && lng ? { latitude: lat, longitude: lng, zoom: 14 } : INITIAL_VIEW}
+          initialViewState={lat && lng ? { latitude: lat, longitude: lng, zoom: 14, pitch: 45, bearing: 0 } : INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
           mapStyle={MAP_STYLES[mapStyle]}
           attributionControl={false}
         >
-          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} baseStyle={baseStyle} />
           <ZoneLayers />
           <MarkerPins />
 
@@ -277,7 +275,7 @@ export default function VehicleDetail() {
               </Source>
               {completedCoords.length >= 2 && (
                 <Source id="route-done" type="geojson" data={{ type: 'Feature', geometry: { type: 'LineString', coordinates: completedCoords } }}>
-                  <Layer id="route-done-line" type="line" paint={{ 'line-color': '#37C2B8', 'line-width': 2.5 }} />
+                  <Layer id="route-done-line" type="line" paint={{ 'line-color': '#22D3EE', 'line-width': 2.5 }} />
                 </Source>
               )}
               {playhead && (
@@ -315,7 +313,7 @@ export default function VehicleDetail() {
         )}
 
         {tab === 'route' && loadingRoute && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(10,14,16,0.6)', color: '#AEB8BD', fontFamily: 'var(--adm-mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42,0.6)', color: 'var(--adm-text-muted)', fontFamily: 'var(--adm-mono)', fontSize: 11, letterSpacing: '0.1em' }}>
             LOADING ROUTE…
           </div>
         )}
@@ -350,12 +348,12 @@ export default function VehicleDetail() {
                 <div className="ud-person-stats">
                   <div className="ud-stat-tile">
                     <span className="ud-stat-tile__label">POSITIONS</span>
-                    <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>{routeCoords.length}</span>
+                    <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)' }}>{routeCoords.length}</span>
                     <span className="ud-stat-tile__sub">Recorded in last 8h</span>
                   </div>
                   <div className="ud-stat-tile">
                     <span className="ud-stat-tile__label">PLAYBACK</span>
-                    <span className="ud-stat-tile__value" style={{ color: '#37C2B8' }}>{routeProgress}%</span>
+                    <span className="ud-stat-tile__value" style={{ color: '#22D3EE' }}>{routeProgress}%</span>
                     <span className="ud-stat-tile__sub">Use scrubber to replay</span>
                   </div>
                 </div>
@@ -383,7 +381,7 @@ export default function VehicleDetail() {
                   <ul className="ud-events">
                     {vehicle.devices.map(dev => (
                       <li key={dev.id} className="ud-event" style={{ alignItems: 'center' }}>
-                        <span className="ud-event__dot" style={{ background: dev.status === 'online' ? '#37C2B8' : '#66727A', boxShadow: dev.status === 'online' ? '0 0 6px #37C2B888' : 'none', flexShrink: 0 }} />
+                        <span className="ud-event__dot" style={{ background: dev.status === 'online' ? '#22D3EE' : '#64748B', boxShadow: dev.status === 'online' ? '0 0 6px #22D3EE88' : 'none', flexShrink: 0 }} />
                         <span className="ud-event__time" style={{ textTransform: 'uppercase' }}>{dev.type}</span>
                         <span className="ud-event__text">{dev.name}{dev.serial ? ` · ${dev.serial}` : ''}</span>
                       </li>
@@ -422,17 +420,17 @@ function DevicesRight({ devices }) {
       <div className="ud-person-stats">
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">TOTAL</span>
-          <span className="ud-stat-tile__value" style={{ color: '#DFE4E6' }}>{devices.length}</span>
+          <span className="ud-stat-tile__value" style={{ color: 'var(--adm-text-muted)' }}>{devices.length}</span>
           <span className="ud-stat-tile__sub">Assigned devices</span>
         </div>
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">ONLINE</span>
-          <span className="ud-stat-tile__value" style={{ color: online > 0 ? '#37C2B8' : '#66727A' }}>{online}</span>
+          <span className="ud-stat-tile__value" style={{ color: online > 0 ? '#22D3EE' : '#64748B' }}>{online}</span>
           <span className="ud-stat-tile__sub">Active</span>
         </div>
         <div className="ud-stat-tile">
           <span className="ud-stat-tile__label">OFFLINE</span>
-          <span className="ud-stat-tile__value" style={{ color: offline > 0 ? '#E0A63C' : '#66727A' }}>{offline}</span>
+          <span className="ud-stat-tile__value" style={{ color: offline > 0 ? '#FB923C' : '#64748B' }}>{offline}</span>
           <span className="ud-stat-tile__sub">No signal</span>
         </div>
       </div>
@@ -445,9 +443,9 @@ function DeviceCard({ dev }) {
   return (
     <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${isOnline ? 'rgba(55,194,184,0.2)' : 'rgba(255,255,255,0.05)'}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#37C2B8' : '#66727A', boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#EEF2F3', flex: 1 }}>{dev.name}</span>
-        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isOnline ? '#37C2B8' : '#66727A' }}>{dev.status}</span>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#22D3EE' : '#64748B', boxShadow: isOnline ? '0 0 6px #22D3EE88' : 'none', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--adm-text)', flex: 1 }}>{dev.name}</span>
+        <span style={{ fontFamily: 'var(--adm-mono)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isOnline ? '#22D3EE' : '#64748B' }}>{dev.status}</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
         {[
@@ -460,7 +458,7 @@ function DeviceCard({ dev }) {
         ].filter(([, v]) => v).map(([label, value]) => (
           <div key={label}>
             <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 8, fontWeight: 600, letterSpacing: '0.1em', color: '#4A5A62', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
-            <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 11, color: '#AEB8BD' }}>{value}</div>
+            <div style={{ fontFamily: 'var(--adm-mono)', fontSize: 11, color: 'var(--adm-text-muted)' }}>{value}</div>
           </div>
         ))}
       </div>

@@ -30,7 +30,7 @@
 }
 
 .logs-search:focus-within {
-  border-color: rgba(55, 194, 184, 0.45);
+  border-color: rgb(var(--adm-secure-rgb) / 0.45);
   color: var(--adm-text);
 }
 
@@ -100,9 +100,9 @@
 }
 
 .logs-pill.active {
-  border-color: #37C2B8;
-  color: #37C2B8;
-  background: rgba(55, 194, 184, 0.08);
+  border-color: var(--adm-secure);
+  color: var(--adm-secure);
+  background: rgb(var(--adm-secure-rgb) / 0.08);
 }
 
 /* ── table ─────────────────────────────────────────────── */
@@ -142,7 +142,7 @@
 .logs-table thead th:last-child  { padding-right: 24px; }
 
 .logs-table tbody tr {
-  border-bottom: 1px solid rgba(55, 194, 184, 0.06);
+  border-bottom: 1px solid rgb(var(--adm-secure-rgb) / 0.06);
   transition: background 0.1s;
 }
 
@@ -181,7 +181,7 @@
 }
 
 .logs-person-link:hover {
-  color: #37C2B8;
+  color: var(--adm-secure);
   text-decoration: underline;
   text-underline-offset: 3px;
 }

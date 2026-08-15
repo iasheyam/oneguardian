@@ -29,7 +29,7 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: #37C2B8;
+  color: var(--adm-secure);
 }
 
 .feed-toolbar__offline {
@@ -220,9 +220,9 @@
 }
 
 .feed-tile__badge.live {
-  background: rgba(55, 194, 184, 0.2);
-  border: 1px solid rgba(55, 194, 184, 0.5);
-  color: #37C2B8;
+  background: rgb(var(--adm-secure-rgb) / 0.2);
+  border: 1px solid rgb(var(--adm-secure-rgb) / 0.5);
+  color: var(--adm-secure);
 }
 
 .feed-tile__badge.offline {
@@ -293,7 +293,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border: 2px solid rgba(55, 194, 184, 0.45);
+  border: 2px solid rgb(var(--adm-secure-rgb) / 0.45);
   pointer-events: none;
   border-radius: 0;
 }
@@ -322,7 +322,7 @@
   aspect-ratio: 16 / 9;
   background: #000;
   overflow: hidden;
-  border: 1px solid rgba(55, 194, 184, 0.25);
+  border: 1px solid rgb(var(--adm-secure-rgb) / 0.25);
   box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 32px 80px rgba(0,0,0,0.7);
   animation: feed-fs-scale 0.18s cubic-bezier(0.2, 0, 0.2, 1);
 }
@@ -420,7 +420,7 @@
 }
 
 .feed-fs-close:hover {
-  background: rgba(242, 73, 91, 0.2);
-  border-color: rgba(242, 73, 91, 0.5);
-  color: #F2495B;
+  background: rgb(var(--adm-duress-rgb) / 0.2);
+  border-color: rgb(var(--adm-duress-rgb) / 0.5);
+  color: var(--adm-duress);
 }

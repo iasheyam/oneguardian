@@ -1,19 +1,28 @@
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAccounts } from '../contexts/AccountsContext'
 import { useLivePositions } from '../../../shared/hooks/useLivePositions'
 import './UnitList.css'
 
-const STATUS_META = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  offline: { color: '#66727A', label: 'OFFLINE' },
+import { UNIT_STATUS as STATUS_META } from '../../../shared/constants/status.js'
+
+function sortByStatus(units) {
+  const order = { duress: 0, warning: 1, normal: 2, offline: 3 }
+  return [...units].sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4))
 }
 
 export default function UnitList() {
   const { accounts } = useAccounts()
   const positions    = useLivePositions()
+  const [collapsedAccounts, setCollapsedAccounts] = useState(new Set())
+
+  function toggleAccount(accountId) {
+    setCollapsedAccounts(prev => {
+      const next = new Set(prev)
+      next.has(accountId) ? next.delete(accountId) : next.add(accountId)
+      return next
+    })
+  }
 
   const allUnits = useMemo(() => {
     const result = []
@@ -29,6 +38,7 @@ export default function UnitList() {
           name:        unit.name,
           type:        unit.type,
           status:      unit.status ?? 'offline',
+          accountId:   acc.id,
           accountName: acc.name,
           deviceCount: unit.devices?.length ?? 0,
           isLive:      !!pos,
@@ -40,8 +50,22 @@ export default function UnitList() {
     return result
   }, [accounts, positions])
 
-  const vehicles = useMemo(() => sortByStatus(allUnits.filter(u => u.type === 'vehicle')), [allUnits])
-  const people   = useMemo(() => sortByStatus(allUnits.filter(u => u.type === 'person')),  [allUnits])
+  const accountGroups = useMemo(() => {
+    const byAccount = new globalThis.Map()
+    for (const unit of allUnits) {
+      if (!byAccount.has(unit.accountId)) {
+        byAccount.set(unit.accountId, { accountId: unit.accountId, accountName: unit.accountName, principals: [], vehicles: [] })
+      }
+      const g = byAccount.get(unit.accountId)
+      if (unit.type === 'person') g.principals.push(unit)
+      else g.vehicles.push(unit)
+    }
+    return Array.from(byAccount.values()).map(g => ({
+      ...g,
+      principals: sortByStatus(g.principals),
+      vehicles:   sortByStatus(g.vehicles),
+    }))
+  }, [allUnits])
 
   if (allUnits.length === 0 && accounts.length === 0) {
     return <div className="unit-list-page"><div className="ul-empty">Loading…</div></div>
@@ -53,31 +77,53 @@ export default function UnitList() {
 
   return (
     <div className="unit-list-page">
-      {people.length > 0 && (
-        <section className="ul-section">
-          <div className="ul-section__header">
-            <span className="ul-section__label">PEOPLE</span>
-            <span className="ul-section__line" />
-            <span className="ul-section__count">{people.length}</span>
-          </div>
-          <div className="ul-grid">
-            {people.map(u => <UnitCard key={u.id} unit={u} />)}
-          </div>
-        </section>
-      )}
+      {accountGroups.map(group => {
+        const collapsed = collapsedAccounts.has(group.accountId)
+        const total = group.principals.length + group.vehicles.length
+        return (
+          <div key={group.accountId} className="ul-account-group">
+            <button
+              className="ul-account-header"
+              onClick={() => toggleAccount(group.accountId)}
+              aria-expanded={!collapsed}
+            >
+              <span className="ul-account-header__name">{group.accountName}</span>
+              <span className="ul-account-header__count">{total}</span>
+              <span className={`ul-account-header__chevron${collapsed ? '' : ' open'}`}>›</span>
+            </button>
 
-      {vehicles.length > 0 && (
-        <section className="ul-section">
-          <div className="ul-section__header">
-            <span className="ul-section__label">VEHICLES</span>
-            <span className="ul-section__line" />
-            <span className="ul-section__count">{vehicles.length}</span>
+            {!collapsed && (
+              <div className="ul-account-body">
+                {group.principals.length > 0 && (
+                  <section className="ul-section">
+                    <div className="ul-section__header">
+                      <span className="ul-section__label">PRINCIPALS</span>
+                      <span className="ul-section__line" />
+                      <span className="ul-section__count">{group.principals.length}</span>
+                    </div>
+                    <div className="ul-grid">
+                      {group.principals.map(u => <UnitCard key={u.id} unit={u} />)}
+                    </div>
+                  </section>
+                )}
+
+                {group.vehicles.length > 0 && (
+                  <section className="ul-section">
+                    <div className="ul-section__header">
+                      <span className="ul-section__label">VEHICLES</span>
+                      <span className="ul-section__line" />
+                      <span className="ul-section__count">{group.vehicles.length}</span>
+                    </div>
+                    <div className="ul-grid">
+                      {group.vehicles.map(u => <UnitCard key={u.id} unit={u} />)}
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
           </div>
-          <div className="ul-grid">
-            {vehicles.map(u => <UnitCard key={u.id} unit={u} />)}
-          </div>
-        </section>
-      )}
+        )
+      })}
     </div>
   )
 }
@@ -112,7 +158,6 @@ function UnitCard({ unit }) {
           {unit.type === 'vehicle' ? <VehicleIcon /> : <PersonIcon />}
         </span>
         <div className="ul-card__principal-block">
-          <span className="ul-card__principal">{unit.accountName}</span>
           <span className="ul-card__role">{unit.deviceCount} device{unit.deviceCount !== 1 ? 's' : ''}</span>
         </div>
       </div>
@@ -121,14 +166,14 @@ function UnitCard({ unit }) {
 
       <div className="ul-card__location">
         <LocationIcon />
-        <span className="ul-card__loc-text" style={{ color: unit.isLive ? '#37C2B8' : undefined }}>
+        <span className="ul-card__loc-text" style={{ color: unit.isLive ? '#22D3EE' : undefined }}>
           {unit.isLive ? 'LIVE TRACKING' : 'No signal'}
         </span>
       </div>
 
       {unit.isLive && (
         <div className="ul-card__speed-row">
-          <span className="ul-card__speed" style={{ color: '#37C2B8' }}>{unit.speed} KPH</span>
+          <span className="ul-card__speed" style={{ color: '#22D3EE' }}>{unit.speed} KPH</span>
           {unit.heading != null && unit.heading > 0 && (
             <span className="ul-card__heading">HDG {unit.heading}°</span>
           )}
@@ -136,18 +181,13 @@ function UnitCard({ unit }) {
       )}
 
       <div className="ul-card__footer">
-        <span className="ul-card__updated" style={unit.isLive ? { color: '#37C2B8' } : undefined}>
+        <span className="ul-card__updated" style={unit.isLive ? { color: '#22D3EE' } : undefined}>
           {unit.isLive ? '● LIVE' : 'No signal'}
         </span>
         <span className="ul-card__cta">VIEW DETAIL →</span>
       </div>
     </article>
   )
-}
-
-function sortByStatus(units) {
-  const order = { duress: 0, warning: 1, normal: 2, offline: 3 }
-  return [...units].sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4))
 }
 
 function VehicleIcon() {

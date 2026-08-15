@@ -1,24 +1,7 @@
+@import './tokens.css';
+@import './utilities.css';
+
 .admin-shell {
-  /* ── design tokens ─────────────────────────────── */
-  --adm-bg-base:    #0D1518;   /* deep canvas — slight blue-teal tint            */
-  --adm-bg-panel:   #14202A;   /* sidebar / topbar — clear step up from base     */
-  --adm-bg-raised:  #1D2E3A;   /* cards, inputs, elevated surfaces               */
-  --adm-border:     #2D3F4C;   /* main separators — ~2.5× more visible than old  */
-  --adm-border-sub: #1F2D38;   /* inner / subtle separators                      */
-
-  --adm-text:       #EEF2F4;   /* primary text — near white, slight cool tint    */
-  --adm-text-muted: #9EB5BE;   /* secondary text — 8.8:1 contrast on base        */
-  --adm-text-dim:   #6B8490;   /* tertiary / labels — 4.9:1, passes WCAG AA      */
-
-  --adm-secure:  #37C2B8;
-  --adm-warning: #E0A63C;
-  --adm-duress:  #F2495B;
-  --adm-offline: #66727A;
-
-  --adm-mono:      'IBM Plex Mono', 'Courier New', monospace;
-  --adm-nav-w:     56px;
-  --adm-topbar-h:  52px;
-
   /* ── layout ────────────────────────────────────── */
   display: flex;
   width: 100vw;
@@ -26,7 +9,7 @@
   overflow: hidden;
   background: var(--adm-bg-base);
   color: var(--adm-text);
-  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--adm-sans);
   font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;

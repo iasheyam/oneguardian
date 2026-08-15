@@ -95,7 +95,7 @@ export function SearchPinMarker({ onDismiss }) {
     <div className="search-pin" onClick={onDismiss} title="Click to dismiss">
       <svg width="22" height="28" viewBox="0 0 22 28" fill="none" aria-hidden>
         <path d="M11 0C4.92 0 0 4.92 0 11c0 8.25 11 17 11 17S22 19.25 22 11C22 4.92 17.08 0 11 0z"
-          fill="#37C2B8" />
+          fill="#22D3EE" />
         <circle cx="11" cy="11" r="4.5" fill="white" />
       </svg>
     </div>

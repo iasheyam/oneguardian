@@ -5,8 +5,8 @@ import { reverseGeocode } from '../../../shared/utils/googlePlaces'
 import './AlertModal.css'
 
 const LEVEL_META = {
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
+  duress:  { color: '#F43F5E', label: 'DURESS'  },
+  warning: { color: '#FB923C', label: 'WARNING' },
 }
 
 const ALERT_TYPE_LABELS = {

@@ -6,9 +6,75 @@
   scrollbar-color: var(--adm-border) transparent;
 }
 
+/* ── account accordion ────────────────── */
+.ul-account-group {
+  margin-bottom: 28px;
+}
+
+.ul-account-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--adm-bg-header);
+  border: 1px solid var(--adm-border-header);
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  color: #ffffff;
+  transition: background 0.12s;
+  margin-bottom: 16px;
+}
+
+.ul-account-header:hover {
+  background: var(--adm-bg-header-hover);
+}
+
+.ul-account-header__name {
+  font-family: var(--adm-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #ffffff;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ul-account-header__count {
+  font-family: var(--adm-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.ul-account-header__chevron {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1;
+  display: inline-block;
+  transform: rotate(90deg);
+  transition: transform 0.18s ease;
+}
+
+.ul-account-header__chevron.open {
+  transform: rotate(-90deg);
+}
+
+.ul-account-body {
+  padding-left: 0;
+}
+
 /* ── section header ───────────────────── */
 .ul-section {
-  margin-bottom: 36px;
+  margin-bottom: 24px;
 }
 
 .ul-section__header {
@@ -243,8 +309,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(55, 194, 184, 0.06);
-  border: 1px solid rgba(55, 194, 184, 0.14);
+  background: rgb(var(--adm-secure-rgb) / 0.06);
+  border: 1px solid rgb(var(--adm-secure-rgb) / 0.14);
   border-radius: 6px;
   padding: 5px 8px;
   overflow: hidden;

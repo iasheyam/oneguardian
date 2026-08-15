@@ -30,7 +30,7 @@
 }
 
 .triggers-search:focus-within {
-  border-color: rgba(55, 194, 184, 0.45);
+  border-color: rgb(var(--adm-secure-rgb) / 0.45);
   color: var(--adm-text);
 }
 
@@ -106,9 +106,9 @@
 }
 
 .triggers-pill.active {
-  border-color: #37C2B8;
-  color: #37C2B8;
-  background: rgba(55, 194, 184, 0.08);
+  border-color: var(--adm-secure);
+  color: var(--adm-secure);
+  background: rgb(var(--adm-secure-rgb) / 0.08);
 }
 
 .triggers-group-toggle {
@@ -182,7 +182,7 @@
 .triggers-table thead th:last-child  { padding-right: 24px; }
 
 .triggers-table tbody tr {
-  border-bottom: 1px solid rgba(55, 194, 184, 0.05);
+  border-bottom: 1px solid rgb(var(--adm-secure-rgb) / 0.05);
   transition: background 0.1s;
 }
 
@@ -270,8 +270,8 @@
 }
 
 .triggers-badge--universal {
-  background: rgba(55, 194, 184, 0.12);
-  color: #37C2B8;
+  background: rgb(var(--adm-secure-rgb) / 0.12);
+  color: var(--adm-secure);
 }
 
 .triggers-badge--assigned {
@@ -286,7 +286,7 @@
   letter-spacing: 0.06em;
 }
 
-.triggers-status--on  { color: #37C2B8; }
+.triggers-status--on  { color: var(--adm-secure); }
 .triggers-status--off { color: var(--adm-text-dim); }
 
 /* ── edit button per row ────────────────────────────────── */
@@ -430,7 +430,7 @@
 }
 
 .trg-input:focus {
-  border-color: #37C2B8;
+  border-color: var(--adm-secure);
 }
 
 .trg-input--code {
@@ -441,12 +441,12 @@
 }
 
 .trg-input--invalid {
-  border-color: #F2495B;
+  border-color: var(--adm-duress);
 }
 
 .trg-field-error {
   font-size: 11px;
-  color: #F2495B;
+  color: var(--adm-duress);
   margin-top: 2px;
 }
 
@@ -464,7 +464,7 @@
 .trg-enabled-toggle input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: #37C2B8;
+  accent-color: var(--adm-secure);
 }
 
 /* ── trigger type note ──────────────────────────────────── */
@@ -506,7 +506,7 @@
 
 .trg-save-error {
   font-size: 12px;
-  color: #F2495B;
+  color: var(--adm-duress);
   margin-right: auto;
 }
 
@@ -537,7 +537,7 @@
 }
 
 .trg-btn--primary {
-  background: #37C2B8;
+  background: var(--adm-secure);
   color: #fff;
 }
 

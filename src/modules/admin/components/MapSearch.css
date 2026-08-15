@@ -1,4 +1,6 @@
-/* ── Map overlay search ───────────────── */
+/* ── Map overlay search ─────────────────────────────────────
+   Uses --mc-* tokens defined in MapControls.css (same :root scope).
+   ──────────────────────────────────────────────────────────── */
 .map-search {
   position: absolute;
   top: 12px;
@@ -11,8 +13,8 @@
   position: relative;
   display: flex;
   align-items: center;
-  background: rgba(10, 14, 18, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--mc-overlay-bg);
+  border: 1px solid var(--mc-overlay-border);
   border-radius: 8px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -21,7 +23,7 @@
 .map-search__icon {
   position: absolute;
   left: 10px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--mc-btn-text);
   pointer-events: none;
 }
 
@@ -32,32 +34,30 @@
   outline: none;
   padding: 9px 32px 9px 30px;
   font-size: 12px;
-  font-family: 'Archivo', sans-serif;
-  color: #eef2f3;
+  font-family: var(--adm-sans);
+  color: var(--adm-text);
 }
 
-.map-search__input::placeholder { color: rgba(255, 255, 255, 0.3); }
+.map-search__input::placeholder { color: var(--mc-btn-text); }
 
 .map-search__spinner {
   position: absolute;
   right: 10px;
   width: 11px;
   height: 11px;
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
-  border-top-color: #37C2B8;
+  border: 1.5px solid var(--mc-separator);
+  border-top-color: var(--adm-secure);
   border-radius: 50%;
-  animation: mss-spin 0.6s linear infinite;
+  animation: adm-spin 0.6s linear infinite;
   flex-shrink: 0;
 }
-
-@keyframes mss-spin { to { transform: rotate(360deg); } }
 
 .map-search__clear {
   position: absolute;
   right: 8px;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--mc-btn-text);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
@@ -66,15 +66,15 @@
   transition: color 0.12s;
 }
 
-.map-search__clear:hover { color: rgba(255, 255, 255, 0.75); }
+.map-search__clear:hover { color: var(--mc-btn-text-hover); }
 
 .map-search__results {
   position: absolute;
   top: calc(100% + 5px);
   left: 0;
   right: 0;
-  background: rgba(10, 14, 18, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--mc-overlay-bg);
+  border: 1px solid var(--mc-overlay-border);
   border-radius: 8px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -99,20 +99,20 @@
   transition: background 0.1s;
 }
 
-.map-search__result:hover { background: rgba(255, 255, 255, 0.07); }
+.map-search__result:hover { background: var(--mc-btn-bg-hover); }
 
 .map-search__result-name {
   font-size: 12px;
   font-weight: 500;
-  color: #eef2f3;
+  color: var(--adm-text);
 }
 
 .map-search__result-ctx {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--mc-btn-text);
 }
 
-/* ── Search pin marker ────────────────── */
+/* ── Search pin marker ──────────────────────────────────────── */
 .search-pin {
   cursor: pointer;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
@@ -126,5 +126,3 @@
   from { transform: translateY(-12px); opacity: 0; }
   to   { transform: translateY(0);     opacity: 1; }
 }
-
-/* ── Map style toggle ─────────────────── */

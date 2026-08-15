@@ -25,7 +25,7 @@ B2B. Clients are onboarded by internal Telematics Guardian staff — not self-se
 - **Database**: PostgreSQL on AWS RDS, Drizzle ORM
 - **Auth**: AWS Cognito (invite-only, no self-signup), JWT via Authorization header
 - **Tracking**: Traccar server (self-hosted), WebSocket feed → position cache → trigger engine
-- **Maps**: Mapbox (`react-map-gl/mapbox`, dark-v11 style), token at `VITE_MAPBOX_TOKEN`. Used in live map, unit detail, and place/plan forms. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for all location search — Mapbox renders, Google searches. `searchGoogle`/`retrieveGoogle` power the place/plan forms (`PlaceForm`, `LocationPicker` in `Accounts.jsx`). `reverseGeocode`/`getTimezoneId` drive the unit detail live tab. All functions in `src/shared/utils/googlePlaces.js`. Mapbox Searchbox API is no longer used.
+- **Maps**: Mapbox (`react-map-gl/mapbox`), token at `VITE_MAPBOX_TOKEN`. Three styles in `MAP_STYLES` (`MapControls.jsx`): `dark` (dark-v11), `light` (streets-v12 — Google Maps–style colors: blue water, green parks), `satellite`. All map views sync to the app theme via `useTheme()` and initialize with `pitch: 45` for 3D buildings. **Google Places API (New)** (`VITE_GOOGLE_MAPS_API_KEY`) for all location search — Mapbox renders, Google searches. `searchGoogle`/`retrieveGoogle` power the place/plan forms (`PlaceForm`, `LocationPicker` in `Accounts.jsx`). `reverseGeocode`/`getTimezoneId` drive the unit detail live tab. All functions in `src/shared/utils/googlePlaces.js`. Mapbox Searchbox API is no longer used.
 - **Real-time**: SSE via `/api/live` endpoint, shared `server/sse.js` broadcast module
 - **Storage**: AWS S3 (photos, logos)
 - **Migrations**: Direct SQL via Node.js scripts (drizzle-kit has TTY issues in this env)
@@ -183,8 +183,10 @@ Fire-and-forget audit writer. Errors are caught silently — a failed log never 
 ### Map controls (`src/modules/admin/components/MapControls.jsx`)
 Centralized overlay rendered inside every `<Map>` as a child. Uses `useMap()` hook — no `mapRef` prop needed.
 - Groups: MAP/SAT style toggle · +/− zoom · Police/Hospital POI overlays (Overpass API, 6km radius around current center)
-- Exports: `MAP_STYLES` (the two Mapbox style URLs), `UpuRow` (popup row helper also used by Dashboard unit popup)
-- POI state is entirely internal; parents only hold `[mapStyle, setMapStyle]` and pass `mapStyle={MAP_STYLES[mapStyle]}` to `<Map>` and `<MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />` inside it
+- Exports: `MAP_STYLES` (three style URLs: `dark`, `light`, `satellite`), `UpuRow` (popup row helper also used by Dashboard unit popup)
+- Map overlay tokens: `--mc-*` CSS variable set on `:root` in `MapControls.css` — flips with dark/light theme via media query and `[data-theme]` overrides. Covers panel bg, borders, button text, popup bg, shadow. `MapSearch.css` references the same vars.
+- Parent pages derive `baseStyle` from `useTheme()` and sync `mapStyle` state via `useEffect` (satellite overrides are preserved). `<MapControls>` receives `baseStyle` prop so the MAP button restores the theme's natural style. Pattern: `const theme = useTheme(); const baseStyle = theme === 'light' ? 'light' : 'dark'`
+- All maps initialize with `pitch: 45` for 3D building view (built into dark-v11 and streets-v12). Users can right-click-drag to adjust pitch/bearing at runtime.
 - Used in: Dashboard, MapStudio, PrincipalDetail, VehicleDetail
 
 ### Client API (`/api/client/` prefix)
@@ -204,6 +206,18 @@ For the mobile app. All routes require a valid JWT **and** a principal linked to
 - Places CRUD: `GET/POST /api/client/places`, `PATCH/DELETE /api/client/places/:placeId` — full Traccar geofence sync mirrored from operator routes
 - Plans CRUD: `GET/POST /api/client/plans`, `PATCH/DELETE /api/client/plans/:planId` — GET inlines `originPlaceName`/`destinationPlaceName` in each leg to avoid N+1 on the client
 - Groups CRUD: `GET/POST /api/client/groups`, `PATCH/DELETE /api/client/groups/:groupId`, `POST/DELETE /api/client/groups/:groupId/members` — account-scoped; returns `{ id, name, unitIds[] }`
+
+### Frontend CSS & shared modules
+
+**Design tokens** — `src/modules/admin/components/tokens.css` is the single source of truth for all `--adm-*` CSS variables. Dark defaults on `:root`, light overrides in `@media (prefers-color-scheme: light)`, explicit `[data-theme="dark/light"]` overrides. Tuned for operator LCD/LED monitors (high contrast: all text levels ≥ 4.5:1 on panel). Imported only from `AdminShell.css` — cascades to all admin pages. Do not redefine `--adm-*` anywhere else.
+
+**Shared utilities** — `src/modules/admin/components/utilities.css`: `@keyframes adm-spin`, `@keyframes markerPulse`, `.adm-chip` / `.adm-chip--sm`. Imported from `AdminShell.css`.
+
+**Theme toggle** — NavRail has a theme button (above logout) that sets `document.documentElement.dataset.theme` and persists to `localStorage`. `src/shared/hooks/useTheme.js` exports `useTheme()` — reads initial theme from localStorage / `prefers-color-scheme`, stays reactive via `MutationObserver` on `data-theme`. Used by all map pages to sync map style.
+
+**Shared constants** — `src/shared/constants/status.js` exports `UNIT_STATUS` (`normal` / `warning` / `duress` / `offline` → `{ color, label }`). Single definition used by Dashboard, UnitList, Accounts, VehicleDetail, PrincipalDetail, OrgSettings, Feed.
+
+**Shared components** — `src/shared/components/StatusChip.jsx` (status chip via `color-mix`), `BackButton.jsx` (navigate(-1) wrapper).
 
 ### Auth
 - `authenticate` middleware: validates Cognito JWT, attaches `req.caller`

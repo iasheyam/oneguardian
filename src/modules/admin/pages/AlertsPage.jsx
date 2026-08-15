@@ -4,9 +4,9 @@ import { humanizeTime } from '../../../shared/utils/time'
 import './AlertsPage.css'
 
 const SEVERITY_LABELS = { red_alert: 'Red Alert', warning: 'Warning', advisory: 'Advisory' }
-const SEVERITY_COLORS = { red_alert: '#F2495B', warning: '#E0A63C', advisory: '#7B8FBD' }
+const SEVERITY_COLORS = { red_alert: '#F43F5E', warning: '#FB923C', advisory: '#7B8FBD' }
 const STATUS_LABELS   = { active: 'Active', acknowledged: "Ack'd", resolved: 'Resolved', false_alarm: 'False Alarm' }
-const STATUS_COLORS   = { active: '#F2495B', acknowledged: '#E0A63C', resolved: '#37C2B8', false_alarm: '#66727A' }
+const STATUS_COLORS   = { active: '#F43F5E', acknowledged: '#FB923C', resolved: '#22D3EE', false_alarm: '#64748B' }
 
 const DATE_PRESETS = [
   { key: 'today', label: 'Today' },
@@ -157,8 +157,8 @@ export default function AlertsPage() {
 }
 
 function AlertRow({ alert, actioning, onAction }) {
-  const sevColor = SEVERITY_COLORS[alert.severity] ?? '#66727A'
-  const stColor  = STATUS_COLORS[alert.status]     ?? '#66727A'
+  const sevColor = SEVERITY_COLORS[alert.severity] ?? '#64748B'
+  const stColor  = STATUS_COLORS[alert.status]     ?? '#64748B'
 
   return (
     <tr>

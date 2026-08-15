@@ -7,6 +7,7 @@ import { MapSearch, SearchPinMarker } from '../components/MapSearch'
 import { MapControls, MAP_STYLES as MAP_STYLE_URLS } from '../components/MapControls'
 import { searchGoogle, retrieveGoogle, viewportToBbox } from '../../../shared/utils/googlePlaces'
 import { apiFetch, apiUrl } from '../../../shared/utils/api'
+import { useTheme } from '../../../shared/hooks/useTheme'
 import './MapStudioPage.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -19,7 +20,7 @@ const RISK_META = {
   critical: { color: '#ef4444', label: 'CRIT' },
 }
 
-const INITIAL_VIEW = { longitude: 0, latitude: 20, zoom: 1.2 }
+const INITIAL_VIEW = { longitude: 0, latitude: 20, zoom: 1.2, pitch: 45, bearing: 0 }
 
 const emptyZoneForm = () => ({ name: '', riskLevel: 'low', description: '' })
 
@@ -51,7 +52,10 @@ export default function MapStudioPage() {
   const [zoneForm,       setZoneForm]       = useState(emptyZoneForm)
   const [drawnGeometry,  setDrawnGeometry]  = useState(null)
   const [searchBoundary, setSearchBoundary] = useState(null)
-  const [mapStyle,       setMapStyle]       = useState('dark')
+  const theme     = useTheme()
+  const baseStyle = theme === 'light' ? 'light' : 'dark'
+  const [mapStyle, setMapStyle] = useState(baseStyle)
+  useEffect(() => { setMapStyle(s => s === 'satellite' ? s : baseStyle) }, [baseStyle])
   const [searchPin,      setSearchPin]      = useState(null)
 
   // Activate / deactivate draw control only when isDrawing changes
@@ -488,7 +492,7 @@ export default function MapStudioPage() {
           <AttributionControl compact position="bottom-left" />
 
           <MapSearch onFlyTo={flyTo} onPin={setSearchPin} />
-          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} />
+          <MapControls mapStyle={mapStyle} onStyleChange={setMapStyle} baseStyle={baseStyle} />
 
           {searchPin && (
             <Marker longitude={searchPin.lng} latitude={searchPin.lat} anchor="bottom">
@@ -499,9 +503,9 @@ export default function MapStudioPage() {
           {searchBoundary && (
             <Source id="search-boundary" type="geojson" data={searchBoundary}>
               <Layer id="search-boundary-fill" type="fill"
-                paint={{ 'fill-color': '#37C2B8', 'fill-opacity': 0.07 }} />
+                paint={{ 'fill-color': '#22D3EE', 'fill-opacity': 0.07 }} />
               <Layer id="search-boundary-outline" type="line"
-                paint={{ 'line-color': '#37C2B8', 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [4, 3] }} />
+                paint={{ 'line-color': '#22D3EE', 'line-width': 2, 'line-opacity': 0.7, 'line-dasharray': [4, 3] }} />
             </Source>
           )}
 

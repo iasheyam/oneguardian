@@ -64,9 +64,9 @@
 }
 
 .alerts-pill.active {
-  border-color: #37C2B8;
-  color: #37C2B8;
-  background: rgba(55, 194, 184, 0.08);
+  border-color: var(--adm-secure);
+  color: var(--adm-secure);
+  background: rgb(var(--adm-secure-rgb) / 0.08);
 }
 
 /* ── table ─────────────────────────────────────────────── */
@@ -106,7 +106,7 @@
 .alerts-table thead th:last-child  { padding-right: 24px; }
 
 .alerts-table tbody tr {
-  border-bottom: 1px solid rgba(55, 194, 184, 0.06);
+  border-bottom: 1px solid rgb(var(--adm-secure-rgb) / 0.06);
   transition: background 0.1s;
 }
 
@@ -163,9 +163,9 @@
   letter-spacing: 0.1em;
   padding: 2px 5px;
   border-radius: 3px;
-  background: rgba(224, 166, 60, 0.15);
-  color: #E0A63C;
-  border: 1px solid rgba(224, 166, 60, 0.3);
+  background: rgb(var(--adm-warning-rgb) / 0.15);
+  color: var(--adm-warning);
+  border: 1px solid rgb(var(--adm-warning-rgb) / 0.3);
 }
 
 .alerts-cell-stack {
@@ -213,7 +213,7 @@
   white-space: nowrap;
 }
 
-.alerts-unit-pill--vehicle   { background: rgba(55, 194, 184, 0.12); color: #37C2B8; }
+.alerts-unit-pill--vehicle   { background: rgb(var(--adm-secure-rgb) / 0.12); color: var(--adm-secure); }
 .alerts-unit-pill--principal { background: rgba(155, 107, 204, 0.12); color: #9B6BCC; }
 
 .alerts-unit-name {
@@ -229,9 +229,9 @@
 .alerts-action-btn {
   padding: 4px 11px;
   border-radius: 5px;
-  border: 1px solid rgba(224, 166, 60, 0.5);
-  background: rgba(224, 166, 60, 0.08);
-  color: #E0A63C;
+  border: 1px solid rgb(var(--adm-warning-rgb) / 0.5);
+  background: rgb(var(--adm-warning-rgb) / 0.08);
+  color: var(--adm-warning);
   font-family: var(--adm-mono);
   font-size: 9.5px;
   font-weight: 600;
@@ -241,19 +241,19 @@
 }
 
 .alerts-action-btn:hover:not(:disabled) {
-  background: rgba(224, 166, 60, 0.16);
-  border-color: #E0A63C;
+  background: rgb(var(--adm-warning-rgb) / 0.16);
+  border-color: var(--adm-warning);
 }
 
 .alerts-action-btn--resolve {
-  border-color: rgba(55, 194, 184, 0.5);
-  background: rgba(55, 194, 184, 0.08);
-  color: #37C2B8;
+  border-color: rgb(var(--adm-secure-rgb) / 0.5);
+  background: rgb(var(--adm-secure-rgb) / 0.08);
+  color: var(--adm-secure);
 }
 
 .alerts-action-btn--resolve:hover:not(:disabled) {
-  background: rgba(55, 194, 184, 0.16);
-  border-color: #37C2B8;
+  background: rgb(var(--adm-secure-rgb) / 0.16);
+  border-color: var(--adm-secure);
 }
 
 .alerts-action-btn:disabled {

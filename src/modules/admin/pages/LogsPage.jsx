@@ -13,10 +13,10 @@ const EVENT_LABELS = {
 }
 
 const EVENT_COLORS = {
-  'user.login':           '#37C2B8',
-  'user.logout':          '#66727A',
+  'user.login':           '#22D3EE',
+  'user.logout':          '#64748B',
   'user.invite_sent':     '#7B8FBD',
-  'user.password_changed':'#E0A63C',
+  'user.password_changed':'#FB923C',
   'member.updated':       '#5AA9C2',
   'member.role_changed':  '#9B6BCC',
 }
@@ -187,7 +187,7 @@ function PersonLink({ person }) {
 }
 
 function EventChip({ event }) {
-  const color = EVENT_COLORS[event] ?? '#66727A'
+  const color = EVENT_COLORS[event] ?? '#64748B'
   const label = EVENT_LABELS[event] ?? event
   return (
     <span className="logs-event-chip" style={{ color, background: `${color}18`, borderColor: `${color}44` }}>

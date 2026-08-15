@@ -6,32 +6,29 @@ import { useAccounts } from '../contexts/AccountsContext'
 import UnitTriggers from '../components/UnitTriggers'
 import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import { searchGoogle, retrieveGoogle } from '../../../shared/utils/googlePlaces'
+import { UNIT_STATUS } from '../../../shared/constants/status.js'
+import { MAP_STYLES } from '../components/MapControls'
+import { useTheme } from '../../../shared/hooks/useTheme'
 import './Accounts.css'
 
 /* ── constants ────────────────────────────────────────────────── */
 const ACC_STATUS = {
-  active:    { color: '#37C2B8', label: 'ACTIVE'    },
-  inactive:  { color: '#66727A', label: 'INACTIVE'  },
-  suspended: { color: '#F2495B', label: 'SUSPENDED' },
-}
-const UNIT_STATUS = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  duress:  { color: '#F2495B', label: 'DURESS'  },
-  offline: { color: '#66727A', label: 'OFFLINE' },
+  active:    { color: '#22D3EE', label: 'ACTIVE'    },
+  inactive:  { color: '#64748B', label: 'INACTIVE'  },
+  suspended: { color: '#F43F5E', label: 'SUSPENDED' },
 }
 const ARMOR_LEVELS = ['B6 Armored', 'B4 Armored', 'B2 Armored', 'Soft skin']
 const DEVICE_TYPES = {
-  gps:    { label: 'GPS',     color: '#37C2B8' },
+  gps:    { label: 'GPS',     color: '#22D3EE' },
   camera: { label: 'Camera',  color: '#7B8FBD' },
-  alert:  { label: 'Alert',   color: '#F2495B' },
-  radio:  { label: 'Radio',   color: '#E0A63C' },
-  phone:  { label: 'Phone',   color: '#66727A' },
-  other:  { label: 'Other',   color: '#66727A' },
+  alert:  { label: 'Alert',   color: '#F43F5E' },
+  radio:  { label: 'Radio',   color: '#FB923C' },
+  phone:  { label: 'Phone',   color: '#64748B' },
+  other:  { label: 'Other',   color: '#64748B' },
 }
 const AVATAR_PALETTE = ['#1B4F8C', '#5C3280', '#1B7A5E', '#7A4B1B', '#4A6E1B', '#1B5C7A']
 const MAPBOX_TOKEN   = import.meta.env.VITE_MAPBOX_TOKEN
-const PLACE_COLORS   = ['#2563eb', '#37C2B8', '#E0A63C', '#F2495B', '#7B8FBD', '#5C3280']
+const PLACE_COLORS   = ['#2563eb', '#22D3EE', '#FB923C', '#F43F5E', '#7B8FBD', '#5C3280']
 
 /* ── helpers ──────────────────────────────────────────────────── */
 function avatarColor(id) {
@@ -687,8 +684,8 @@ function DeviceRow({ dev, isPrimary, onEdit, onDelete, isConfirm, onCancelConfir
   return (
     <div className={`ac-dv-row${isConfirm ? ' is-confirming' : ''}${isPrimary ? ' ac-dv-row--primary' : ''}`}>
       <div className="ac-dv-row__main">
-        <span className="ac-dv-dot" style={{ background: isOnline ? '#37C2B8' : '#66727A',
-          boxShadow: isOnline ? '0 0 6px #37C2B888' : 'none' }} />
+        <span className="ac-dv-dot" style={{ background: isOnline ? '#22D3EE' : '#64748B',
+          boxShadow: isOnline ? '0 0 6px #22D3EE88' : 'none' }} />
         <div className="ac-dv-info">
           <span className="ac-dv-name">{dev.name}</span>
           <div className="ac-dv-meta">
@@ -700,7 +697,7 @@ function DeviceRow({ dev, isPrimary, onEdit, onDelete, isConfirm, onCancelConfir
           </div>
         </div>
         <div className="ac-dv-actions">
-          <span className="ac-dv-status" style={{ color: isOnline ? '#37C2B8' : '#66727A' }}>
+          <span className="ac-dv-status" style={{ color: isOnline ? '#22D3EE' : '#64748B' }}>
             {dev.status}
           </span>
           <button className="ac-icon-btn" title="Edit device" onClick={onEdit}>
@@ -967,6 +964,7 @@ function RosterCard({ unit, accountId, confirmDelete, setConfirmDelete, setPanel
 ═══════════════════════════════════════════════════════════════ */
 
 function PlaceForm({ initial, onSave, onCancel }) {
+  const theme = useTheme()
   const [sessionToken] = useState(() => crypto.randomUUID())
   const debounceRef    = useRef(null)
 
@@ -1055,7 +1053,7 @@ function PlaceForm({ initial, onSave, onCancel }) {
             key={`${resolved.longitude},${resolved.latitude}`}
             mapboxAccessToken={MAPBOX_TOKEN}
             initialViewState={{ longitude: resolved.longitude, latitude: resolved.latitude, zoom: 15 }}
-            mapStyle="mapbox://styles/mapbox/dark-v11"
+            mapStyle={MAP_STYLES[theme === 'light' ? 'light' : 'dark']}
             style={{ width: '100%', height: '100%' }}
           >
             <Marker longitude={resolved.longitude} latitude={resolved.latitude} anchor="center">
@@ -1216,6 +1214,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /* ── MiniPlaceForm — inline "save as place" after picking from map ─ */
 function MiniPlaceForm({ resolved, onSave, onCancel }) {
+  const theme = useTheme()
   const [name,   setName]   = useState(resolved.name ?? '')
   const [radius, setRadius] = useState(150)
   const [color,  setColor]  = useState(PLACE_COLORS[0])
@@ -1850,7 +1849,7 @@ export function AccountDetail() {
           { value: vehicles,               label: 'VEHICLES'    },
           { value: devs,                   label: 'DEVICES'     },
           { value: account.groups.length,  label: 'GROUPS'      },
-          { value: alerts, label: 'ALERTS', color: alerts > 0 ? '#E0A63C' : undefined },
+          { value: alerts, label: 'ALERTS', color: alerts > 0 ? '#FB923C' : undefined },
           { value: fmtSince(account.createdAt), label: 'CLIENT SINCE', small: true },
         ].map(s => (
           <div key={s.label} className="ac-stat-block">
@@ -2058,7 +2057,7 @@ export function GroupDetail() {
         <h2 className="ac-section-header__name">{group.name}</h2>
         <span className="ac-section-header__sub">
           {account.name} · {gPeople} people · {gVehicles} vehicles
-          {groupAlerts > 0 && <span style={{ color: '#E0A63C' }}> · {groupAlerts} alert{groupAlerts > 1 ? 's' : ''}</span>}
+          {groupAlerts > 0 && <span style={{ color: '#FB923C' }}> · {groupAlerts} alert{groupAlerts > 1 ? 's' : ''}</span>}
         </span>
       </div>
 

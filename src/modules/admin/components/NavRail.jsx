@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import './NavRail.css'
@@ -21,6 +22,8 @@ function MediaIcon() { return <svg width="14" height="16" viewBox="0 0 14 16" fi
 function AccountsIcon() { return <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden><rect x="1" y="4.5" width="12" height="11" rx="1.25" stroke="currentColor" strokeWidth="1.4"/><path d="M4.5 4.5V3a.5.5 0 01.5-.5h4a.5.5 0 01.5.5v1.5" stroke="currentColor" strokeWidth="1.4"/><rect x="5.75" y="9.5" width="2.5" height="6" rx="0.6" fill="currentColor"/><rect x="2.5" y="6.5" width="2" height="1.75" rx="0.5" fill="currentColor"/><rect x="9.5" y="6.5" width="2" height="1.75" rx="0.5" fill="currentColor"/></svg> }
 function AdminIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.41 1.41M11.37 11.37l1.41 1.41M3.22 12.78l1.41-1.41M11.37 4.63l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> }
 function LogoutIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M11 11l3-3-3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg> }
+function SunIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1M3.4 3.4l.7.7M11.9 11.9l.7.7M3.4 12.6l.7-.7M11.9 4.1l.7-.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg> }
+function MoonIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M13 10a5.5 5.5 0 01-7-7 6 6 0 107 7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg> }
 function LogsIcon() { return <svg width="15" height="14" viewBox="0 0 15 14" fill="none" aria-hidden><rect x="0.75" y="0.75" width="13.5" height="2.5" rx="1.25" stroke="currentColor" strokeWidth="1.3"/><rect x="0.75" y="5.75" width="13.5" height="2.5" rx="1.25" stroke="currentColor" strokeWidth="1.3"/><rect x="0.75" y="10.75" width="8" height="2.5" rx="1.25" stroke="currentColor" strokeWidth="1.3"/></svg> }
 function TriggersIcon() { return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M8 1.5C5 1.5 2.5 4 2.5 7c0 2.1 1.1 3.9 2.8 4.9V13h5.4v-1.1c1.7-1 2.8-2.8 2.8-4.9 0-3-2.5-5.5-5.5-5.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M5.5 13.5h5M8 13.5V15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M8 4.5v3.5l2 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg> }
 function TestingIcon() { return <svg width="14" height="16" viewBox="0 0 14 16" fill="none" aria-hidden><path d="M4.5 1h5M5 1v6L1.5 13.5A1 1 0 002.4 15h9.2a1 1 0 00.9-1.5L9 7V1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="5.5" cy="11" r="1" fill="currentColor"/><circle cx="8.5" cy="12.5" r="0.7" fill="currentColor"/></svg> }
@@ -29,9 +32,21 @@ function MapStudioIcon() { return <svg width="14" height="16" viewBox="0 0 14 16
 
 const ICONS = { dashboard: OpsIcon, mapstudio: MapStudioIcon, unit: UnitIcon, feed: MediaIcon, accounts: AccountsIcon, logs: LogsIcon, alerts: AlertsIcon, triggers: TriggersIcon, testing: TestingIcon, admin: AdminIcon }
 
+function getStoredTheme() {
+  const stored = localStorage.getItem('adm-theme')
+  if (stored === 'dark' || stored === 'light') return stored
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 export default function NavRail({ screen, onNav }) {
   const { signOut, can } = useAuth()
   const navigate = useNavigate()
+  const [theme, setTheme] = useState(getStoredTheme)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('adm-theme', theme)
+  }, [theme])
 
   const visibleItems = NAV_ITEMS.filter(item => can(item.permKey))
 
@@ -67,6 +82,14 @@ export default function NavRail({ screen, onNav }) {
       </ul>
 
       <div className="nav-rail__footer">
+        <button
+          className="nav-item nav-item--theme"
+          onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          <span className="nav-item__icon">{theme === 'dark' ? <SunIcon /> : <MoonIcon />}</span>
+          <span className="nav-item__label">{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
+        </button>
         <button className="nav-item nav-item--logout" onClick={handleLogout} title="Sign out">
           <span className="nav-item__icon"><LogoutIcon /></span>
           <span className="nav-item__label">OUT</span>
@@ -80,8 +103,8 @@ function ShieldMark() {
   return (
     <svg width="22" height="26" viewBox="0 0 22 26" fill="none" aria-hidden>
       <path d="M11 1L2 4.5V12C2 17 6 21.5 11 24C16 21.5 20 17 20 12V4.5L11 1Z"
-        stroke="#37C2B8" strokeWidth="1.5" strokeLinejoin="round"/>
-      <path d="M7 12.5L10 15.5L15 10" stroke="#37C2B8" strokeWidth="1.5"
+        stroke="#22D3EE" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M7 12.5L10 15.5L15 10" stroke="#22D3EE" strokeWidth="1.5"
         strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )

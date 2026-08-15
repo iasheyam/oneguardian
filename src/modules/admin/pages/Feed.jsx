@@ -2,12 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { mockFeeds } from '../data/mockFeeds'
 import './Feed.css'
 
-const UNIT_STATUS_META = {
-  normal:  { color: '#37C2B8' },
-  warning: { color: '#E0A63C' },
-  duress:  { color: '#F2495B' },
-  offline: { color: '#66727A' },
-}
+import { UNIT_STATUS as UNIT_STATUS_META } from '../../../shared/constants/status.js'
 
 const COLS_OPTIONS = [2, 3, 4]
 

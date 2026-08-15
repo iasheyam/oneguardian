@@ -1,4 +1,75 @@
-/* ── Map Controls Panel ───────────────────────────────────── */
+/* ── Map overlay tokens — flip with theme ──────────────────── */
+:root {
+  --mc-overlay-bg:     rgba(6, 12, 24, 0.88);
+  --mc-overlay-border: rgba(255, 255, 255, 0.11);
+  --mc-separator:      rgba(255, 255, 255, 0.07);
+  --mc-btn-text:       rgba(255, 255, 255, 0.45);
+  --mc-btn-text-hover: rgba(255, 255, 255, 0.88);
+  --mc-btn-text-act:   #ffffff;
+  --mc-btn-bg-hover:   rgba(255, 255, 255, 0.07);
+  --mc-btn-bg-act:     rgba(255, 255, 255, 0.14);
+  --mc-popup-bg:       rgba(6, 12, 24, 0.97);
+  --mc-popup-tip:      rgb(6, 12, 24);
+  --mc-key-color:      #6A8090;
+  --mc-shadow:         0 8px 32px rgba(0, 0, 0, 0.75);
+  --mc-close-bg:       rgba(255, 255, 255, 0.10);
+  --mc-close-border:   rgba(255, 255, 255, 0.18);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --mc-overlay-bg:     rgba(246, 249, 252, 0.94);
+    --mc-overlay-border: rgba(0, 0, 0, 0.10);
+    --mc-separator:      rgba(0, 0, 0, 0.07);
+    --mc-btn-text:       rgba(0, 0, 0, 0.50);
+    --mc-btn-text-hover: rgba(0, 0, 0, 0.85);
+    --mc-btn-text-act:   rgba(0, 0, 0, 0.90);
+    --mc-btn-bg-hover:   rgba(0, 0, 0, 0.05);
+    --mc-btn-bg-act:     rgba(0, 0, 0, 0.08);
+    --mc-popup-bg:       rgba(246, 249, 252, 0.97);
+    --mc-popup-tip:      rgb(246, 249, 252);
+    --mc-key-color:      #446878;
+    --mc-shadow:         0 4px 20px rgba(0, 0, 0, 0.16);
+    --mc-close-bg:       rgba(0, 0, 0, 0.06);
+    --mc-close-border:   rgba(0, 0, 0, 0.12);
+  }
+}
+
+:root[data-theme="dark"] {
+  --mc-overlay-bg:     rgba(6, 12, 24, 0.88);
+  --mc-overlay-border: rgba(255, 255, 255, 0.11);
+  --mc-separator:      rgba(255, 255, 255, 0.07);
+  --mc-btn-text:       rgba(255, 255, 255, 0.45);
+  --mc-btn-text-hover: rgba(255, 255, 255, 0.88);
+  --mc-btn-text-act:   #ffffff;
+  --mc-btn-bg-hover:   rgba(255, 255, 255, 0.07);
+  --mc-btn-bg-act:     rgba(255, 255, 255, 0.14);
+  --mc-popup-bg:       rgba(6, 12, 24, 0.97);
+  --mc-popup-tip:      rgb(6, 12, 24);
+  --mc-key-color:      #6A8090;
+  --mc-shadow:         0 8px 32px rgba(0, 0, 0, 0.75);
+  --mc-close-bg:       rgba(255, 255, 255, 0.10);
+  --mc-close-border:   rgba(255, 255, 255, 0.18);
+}
+
+:root[data-theme="light"] {
+  --mc-overlay-bg:     rgba(246, 249, 252, 0.94);
+  --mc-overlay-border: rgba(0, 0, 0, 0.10);
+  --mc-separator:      rgba(0, 0, 0, 0.07);
+  --mc-btn-text:       rgba(0, 0, 0, 0.50);
+  --mc-btn-text-hover: rgba(0, 0, 0, 0.85);
+  --mc-btn-text-act:   rgba(0, 0, 0, 0.90);
+  --mc-btn-bg-hover:   rgba(0, 0, 0, 0.05);
+  --mc-btn-bg-act:     rgba(0, 0, 0, 0.08);
+  --mc-popup-bg:       rgba(246, 249, 252, 0.97);
+  --mc-popup-tip:      rgb(246, 249, 252);
+  --mc-key-color:      #446878;
+  --mc-shadow:         0 4px 20px rgba(0, 0, 0, 0.16);
+  --mc-close-bg:       rgba(0, 0, 0, 0.06);
+  --mc-close-border:   rgba(0, 0, 0, 0.12);
+}
+
+/* ── Map Controls Panel ────────────────────────────────────── */
 .mc-panel {
   position: absolute;
   top: 12px;
@@ -14,8 +85,8 @@
   flex-direction: column;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(10, 14, 16, 0.82);
+  border: 1px solid var(--mc-overlay-border);
+  background: var(--mc-overlay-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -33,7 +104,7 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--mc-btn-text);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -43,22 +114,22 @@
 
 /* separator between stacked buttons */
 .mc-btn + .mc-btn {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--mc-separator);
 }
 
 .mc-group--row .mc-btn + .mc-btn {
   border-top: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 1px solid var(--mc-separator);
 }
 
 .mc-btn:hover:not(.mc-btn--active):not(:disabled) {
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--mc-btn-text-hover);
+  background: var(--mc-btn-bg-hover);
 }
 
 .mc-btn--active {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.13);
+  color: var(--mc-btn-text-act);
+  background: var(--mc-btn-bg-act);
 }
 
 .mc-btn--zoom {
@@ -93,14 +164,11 @@
   border: 1.5px solid currentColor;
   border-top-color: transparent;
   flex-shrink: 0;
-  animation: mc-spin 0.7s linear infinite;
+  animation: adm-spin 0.7s linear infinite;
 }
 
-@keyframes mc-spin {
-  to { transform: rotate(360deg); }
-}
 
-/* ── POI markers on map ───────────────────────────────────── */
+/* ── POI markers on map ────────────────────────────────────── */
 .mc-poi-marker {
   display: flex;
   flex-direction: column;
@@ -110,7 +178,7 @@
 }
 
 .mc-poi-marker--police   { color: #4A90E2; }
-.mc-poi-marker--hospital { color: #F2495B; }
+.mc-poi-marker--hospital { color: var(--adm-duress); }
 
 .mc-poi-marker svg {
   filter: drop-shadow(0 0 4px currentColor);
@@ -132,28 +200,28 @@
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: rgba(10, 14, 16, 0.82);
+  background: var(--mc-overlay-bg);
   padding: 1px 4px;
   border-radius: 3px;
   color: inherit;
 }
 
-/* ── Unit / POI popup ─────────────────────────────────────── */
+/* ── Unit / POI popup ──────────────────────────────────────── */
 .unit-popup .mapboxgl-popup-content {
-  background: rgba(9, 13, 15, 0.96);
-  border: 1px solid rgba(55, 194, 184, 0.2);
+  background: var(--mc-popup-bg);
+  border: 1px solid rgb(var(--adm-secure-rgb) / 0.2);
   border-radius: 10px;
   padding: 0;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--mc-shadow);
   min-width: 230px;
 }
 
 .unit-popup .mapboxgl-popup-tip {
-  border-top-color: rgba(9, 13, 15, 0.96);
+  border-top-color: var(--mc-popup-tip);
 }
 
 .unit-popup .mapboxgl-popup-close-button {
-  color: #AEB8BD;
+  color: var(--adm-text-muted);
   font-size: 14px;
   line-height: 1;
   width: 22px;
@@ -164,15 +232,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(174, 184, 189, 0.12);
-  border: 1px solid rgba(174, 184, 189, 0.2);
+  background: var(--mc-close-bg);
+  border: 1px solid var(--mc-close-border);
   border-radius: 50%;
   transition: background 0.12s, color 0.12s;
 }
 
 .unit-popup .mapboxgl-popup-close-button:hover {
-  color: #EEF2F3;
-  background: rgba(174, 184, 189, 0.22);
+  color: var(--adm-text);
+  background: var(--mc-btn-bg-act);
 }
 
 .upu {
@@ -186,7 +254,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 42px 10px 14px;
-  border-bottom: 1px solid rgba(55, 194, 184, 0.1);
+  border-bottom: 1px solid rgb(var(--adm-secure-rgb) / 0.1);
 }
 
 .upu-dot {
@@ -200,7 +268,7 @@
   font-family: var(--adm-mono);
   font-size: 11px;
   font-weight: 700;
-  color: #EEF2F3;
+  color: var(--adm-text);
   letter-spacing: 0.05em;
   flex: 1;
 }
@@ -236,14 +304,14 @@
   font-size: 8.5px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: #4A5A62;
+  color: var(--mc-key-color);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .upu-val {
   font-size: 12px;
-  color: #AEB8BD;
+  color: var(--adm-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -261,13 +329,13 @@
   width: 100%;
   background: none;
   border: none;
-  border-top: 1px solid rgba(55, 194, 184, 0.1);
+  border-top: 1px solid rgb(var(--adm-secure-rgb) / 0.1);
   padding: 10px 14px;
   font-family: var(--adm-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: #37C2B8;
+  color: var(--adm-secure);
   cursor: pointer;
   text-align: left;
   transition: background 0.12s, color 0.12s;
@@ -275,6 +343,6 @@
 }
 
 .upu-open:hover {
-  background: rgba(55, 194, 184, 0.08);
-  color: #5ED8D0;
+  background: rgb(var(--adm-secure-rgb) / 0.08);
+  color: var(--adm-secure);
 }

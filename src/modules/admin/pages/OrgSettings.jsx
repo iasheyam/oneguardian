@@ -5,54 +5,49 @@ import { useAccounts } from '../contexts/AccountsContext'
 import { useAuth } from '../../auth/AuthContext'
 import { humanizeTime } from '../../../shared/utils/time'
 import { apiUrl, apiFetch } from '../../../shared/utils/api'
-
-const STATUS_META = {
-  normal:  { color: '#37C2B8', label: 'SECURE'  },
-  warning: { color: '#E0A63C', label: 'WARNING' },
-  offline: { color: '#66727A', label: 'OFFLINE' },
-}
+import { UNIT_STATUS as STATUS_META } from '../../../shared/constants/status.js'
 
 const MEMBER_STATUS_META = {
-  online:  { color: '#37C2B8', label: 'ONLINE'  },
-  away:    { color: '#E0A63C', label: 'AWAY'    },
-  offline: { color: '#66727A', label: 'OFFLINE' },
+  online:  { color: '#22D3EE', label: 'ONLINE'  },
+  away:    { color: '#FB923C', label: 'AWAY'    },
+  offline: { color: '#64748B', label: 'OFFLINE' },
 }
 
 const ROLE_CHIP_META = {
-  Admin:    { color: '#37C2B8' },
-  Operator: { color: '#66727A' },
+  Admin:    { color: '#22D3EE' },
+  Operator: { color: '#64748B' },
 }
 
 const ACC_STATUS = {
-  active:   { color: '#37C2B8', label: 'ACTIVE'   },
-  inactive: { color: '#66727A', label: 'INACTIVE' },
+  active:   { color: '#22D3EE', label: 'ACTIVE'   },
+  inactive: { color: '#64748B', label: 'INACTIVE' },
 }
 
 const ACTIVITY_TYPES = {
-  login:    { label: 'LOGIN',    color: '#37C2B8' },
+  login:    { label: 'LOGIN',    color: '#22D3EE' },
   ops:      { label: 'OPS',      color: '#5AA9C2' },
-  alert:    { label: 'ALERT',    color: '#E0A63C' },
-  export:   { label: 'EXPORT',   color: '#66727A' },
+  alert:    { label: 'ALERT',    color: '#FB923C' },
+  export:   { label: 'EXPORT',   color: '#64748B' },
   settings: { label: 'SETTINGS', color: '#7B8FBD' },
   member:   { label: 'MEMBER',   color: '#9B6BCC' },
 }
 
 const LOG_EVENT_META = {
-  'user.login':            { label: 'LOGIN',      color: '#37C2B8' },
-  'user.logout':           { label: 'LOGOUT',     color: '#66727A' },
-  'user.account_activated':{ label: 'ACTIVATED',  color: '#37C2B8' },
+  'user.login':            { label: 'LOGIN',      color: '#22D3EE' },
+  'user.logout':           { label: 'LOGOUT',     color: '#64748B' },
+  'user.account_activated':{ label: 'ACTIVATED',  color: '#22D3EE' },
   'user.invite_sent':      { label: 'INVITED',    color: '#7B8FBD' },
-  'user.password_changed': { label: 'PASSWORD',   color: '#E0A63C' },
+  'user.password_changed': { label: 'PASSWORD',   color: '#FB923C' },
   'member.updated':        { label: 'UPDATED',    color: '#5AA9C2' },
   'member.role_changed':   { label: 'ROLE',       color: '#9B6BCC' },
 }
 
 
 const GEO_TYPE_META = {
-  'SAFE ZONE': { color: '#37C2B8' },
+  'SAFE ZONE': { color: '#22D3EE' },
   'CORRIDOR':  { color: '#5AA9C2' },
-  'EXCLUSION': { color: '#E0A63C' },
-  'WAYPOINT':  { color: '#66727A' },
+  'EXCLUSION': { color: '#FB923C' },
+  'WAYPOINT':  { color: '#64748B' },
 }
 
 const ALL_PERMISSIONS = [
@@ -302,7 +297,7 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                 ? <tr><td colSpan={7} className="os-td-empty">{q ? 'No matches.' : 'No active users yet.'}</td></tr>
                 : filteredUsers.map(u => {
                     const statusMeta  = MEMBER_STATUS_META[u.status] ?? MEMBER_STATUS_META.offline
-                    const roleColor   = u.roleColor ?? ROLE_CHIP_META[u.role]?.color ?? '#66727A'
+                    const roleColor   = u.roleColor ?? ROLE_CHIP_META[u.role]?.color ?? '#64748B'
                     return (
                       <tr key={u.id}>
                         <td>
@@ -314,9 +309,9 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                             </div>
                           </div>
                         </td>
-                        <td><Chip label={u.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={u.type === 'external' ? '#7B8FBD' : '#37C2B8'} /></td>
+                        <td><Chip label={u.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={u.type === 'external' ? '#7B8FBD' : '#22D3EE'} /></td>
                         <td><Chip label={u.role ?? '—'} color={roleColor} /></td>
-                        <td><Chip label={u.twoFactor ? 'ON' : 'OFF'} color={u.twoFactor ? '#37C2B8' : '#E0A63C'} /></td>
+                        <td><Chip label={u.twoFactor ? 'ON' : 'OFF'} color={u.twoFactor ? '#22D3EE' : '#FB923C'} /></td>
                         <td><Chip label={statusMeta.label} color={statusMeta.color} dot /></td>
                         <td className="os-td-mono os-td-last-login">{humanizeTime(u.lastActiveAt)}</td>
                         <td><button className="os-row-manage-btn" onClick={() => onEdit(u.id)}>Manage</button></td>
@@ -356,9 +351,9 @@ function MembersSection({ dbUsers, dbInvitations, loading, onEdit }) {
                           </div>
                         </div>
                       </td>
-                      <td><Chip label={inv.role ?? '—'} color={inv.roleColor ?? ROLE_CHIP_META[inv.role]?.color ?? '#66727A'} /></td>
+                      <td><Chip label={inv.role ?? '—'} color={inv.roleColor ?? ROLE_CHIP_META[inv.role]?.color ?? '#64748B'} /></td>
                       <td className="os-td-mono">{new Date(inv.invitedAt).toLocaleDateString()}</td>
-                      <td><Chip label="PENDING" color="#E0A63C" dot /></td>
+                      <td><Chip label="PENDING" color="#FB923C" dot /></td>
                       <td>
                         <button
                           className="os-resend-btn"
@@ -543,7 +538,7 @@ function DevicesSection({ devices }) {
                     <td>
                       <Chip
                         label={d.status === 'online' ? 'ONLINE' : 'OFFLINE'}
-                        color={d.status === 'online' ? '#37C2B8' : '#66727A'}
+                        color={d.status === 'online' ? '#22D3EE' : '#64748B'}
                       />
                     </td>
                     <td className="os-td-mono">{d.traccarDeviceId || '—'}</td>
@@ -694,7 +689,7 @@ function VehiclesSection({ vehicles }) {
                 ? <tr><td colSpan={7} className="os-td-empty">No matches.</td></tr>
                 : filtered.map(v => {
                     const sc = STATUS_META[v.status] ?? STATUS_META.offline
-                    const armorColor = v.armorLevel?.startsWith('B6') ? '#37C2B8' : v.armorLevel?.startsWith('B4') ? '#5AA9C2' : '#66727A'
+                    const armorColor = v.armorLevel?.startsWith('B6') ? '#22D3EE' : v.armorLevel?.startsWith('B4') ? '#5AA9C2' : '#64748B'
                     return (
                       <tr key={v.id}>
                         <td className="os-member-name">{v.name}</td>
@@ -1206,8 +1201,8 @@ function MemberEditView({ members, loading, roles, onSave }) {
           <div className="me-page-header__info">
             <span className="me-page-header__name">{name || member.name}</span>
             <div className="me-page-header__chips">
-              <Chip label={member.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={member.type === 'external' ? '#7B8FBD' : '#37C2B8'} />
-              <Chip label={(selectedRole?.name ?? '—').toUpperCase()} color={selectedRole?.color ?? '#66727A'} />
+              <Chip label={member.type === 'external' ? 'EXTERNAL' : 'INTERNAL'} color={member.type === 'external' ? '#7B8FBD' : '#22D3EE'} />
+              <Chip label={(selectedRole?.name ?? '—').toUpperCase()} color={selectedRole?.color ?? '#64748B'} />
             </div>
           </div>
         </div>
@@ -1349,7 +1344,7 @@ function MemberEditView({ members, loading, roles, onSave }) {
             ) : (
               <div className="me-activity-list">
                 {memberLogs.map(ev => {
-                  const meta = LOG_EVENT_META[ev.event] ?? { label: ev.event, color: '#66727A' }
+                  const meta = LOG_EVENT_META[ev.event] ?? { label: ev.event, color: '#64748B' }
                   return (
                     <div key={ev.id} className="me-activity-row">
                       <span className="me-activity-dot" style={{ background: meta.color }} />
@@ -1426,7 +1421,7 @@ function AccountGrantRow({ accId, grants, accounts, onClick }) {
 }
 
 /* ── AssignmentPanel ──────────────────────────────────────────── */
-const UNIT_STATUS_COLOR = { normal: '#37C2B8', warning: '#E0A63C', duress: '#F2495B', offline: '#66727A' }
+const UNIT_STATUS_COLOR = { normal: '#22D3EE', warning: '#FB923C', duress: '#F43F5E', offline: '#64748B' }
 
 function AssignmentPanel({ accounts, dbAssignments, editAccountId, onAdd, onRemove, onClose }) {
   const editAccount = editAccountId ? accounts.find(a => a.id === editAccountId) ?? null : null
@@ -1684,7 +1679,7 @@ function AssignmentPanel({ accounts, dbAssignments, editAccountId, onAdd, onRemo
                           <span className="ap-item__primary">{unit.name}</span>
                           {already && <span className="ap-item__assigned-tag">Already assigned</span>}
                         </div>
-                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#66727A' }}>
+                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#64748B' }}>
                           {unit.status?.toUpperCase()}
                         </span>
                       </button>
@@ -1711,7 +1706,7 @@ function AssignmentPanel({ accounts, dbAssignments, editAccountId, onAdd, onRemo
                           <span className="ap-item__primary">{unit.name}</span>
                           {already && <span className="ap-item__assigned-tag">Already assigned</span>}
                         </div>
-                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#66727A' }}>
+                        <span className="ap-item__status" style={{ color: UNIT_STATUS_COLOR[unit.status] ?? '#64748B' }}>
                           {unit.status?.toUpperCase()}
                         </span>
                       </button>
@@ -1844,7 +1839,7 @@ function MemberInviteView({ roles, onSave }) {
             </div>
           )}
         </div>
-        {error && <p style={{ marginTop: 12, fontSize: 13, color: '#F2495B' }}>{error}</p>}
+        {error && <p style={{ marginTop: 12, fontSize: 13, color: '#F43F5E' }}>{error}</p>}
       </div>
     </div>
   )
@@ -1887,7 +1882,7 @@ function TrashIcon() {
 function CheckIcon() {
   return (
     <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden>
-      <path d="M1 4L3.5 6.5L9 1" stroke="#0A0E10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M1 4L3.5 6.5L9 1" stroke="var(--adm-bg-base)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
@@ -1914,10 +1909,10 @@ function Chip({ label, color, dot }) {
 }
 
 const AVATAR_PALETTES = [
-  { bg: 'rgba(55,194,184,0.12)', color: '#37C2B8' },
+  { bg: 'rgba(55,194,184,0.12)', color: '#22D3EE' },
   { bg: 'rgba(90,169,194,0.12)', color: '#5AA9C2' },
   { bg: 'rgba(102,114,122,0.15)', color: '#7D8990' },
-  { bg: 'rgba(224,166,60,0.12)',  color: '#E0A63C' },
+  { bg: 'rgba(224,166,60,0.12)',  color: '#FB923C' },
 ]
 
 function Avatar({ name, role, size }) {

@@ -3,15 +3,15 @@ import { apiUrl, apiFetch } from '../../../shared/utils/api'
 import './TriggersPage.css'
 
 const SEVERITY_META = {
-  red_alert: { label: 'Red Alert', color: '#F2495B' },
-  warning:   { label: 'Warning',   color: '#E0A63C' },
+  red_alert: { label: 'Red Alert', color: '#F43F5E' },
+  warning:   { label: 'Warning',   color: '#FB923C' },
   advisory:  { label: 'Advisory',  color: '#7B8FBD' },
 }
 
 const SOURCE_META = {
-  device:    { label: 'Device',    color: '#37C2B8' },
+  device:    { label: 'Device',    color: '#22D3EE' },
   server:    { label: 'Server',    color: '#9B6BCC' },
-  scheduled: { label: 'Scheduled', color: '#66727A' },
+  scheduled: { label: 'Scheduled', color: '#64748B' },
 }
 
 const UNIT_TYPE_LABELS = {

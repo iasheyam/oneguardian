@@ -42,7 +42,7 @@
   border: 1px solid var(--adm-border);
   border-radius: 7px;
   padding: 7px 28px 7px 30px;
-  font-family: 'Archivo', sans-serif;
+  font-family: var(--adm-sans);
   font-size: 12px;
   color: var(--adm-text);
   outline: none;
@@ -50,7 +50,7 @@
   transition: border-color 0.15s;
 }
 
-.ms-list-search__input:focus { border-color: var(--adm-accent); }
+.ms-list-search__input:focus { border-color: var(--adm-secure); }
 .ms-list-search__input::placeholder { color: var(--adm-text-muted); }
 
 .ms-list-search__clear {
@@ -124,9 +124,9 @@
 }
 
 .ms-add-btn:hover {
-  color: var(--adm-accent);
-  border-color: var(--adm-accent);
-  background: color-mix(in srgb, var(--adm-accent) 10%, transparent);
+  color: var(--adm-secure);
+  border-color: var(--adm-secure);
+  background: color-mix(in srgb, var(--adm-secure) 10%, transparent);
 }
 
 /* ── list ─────────────────────────────── */
@@ -227,7 +227,7 @@
 
 .ms-item:hover .ms-item__edit,
 .ms-item:hover .ms-item__delete { opacity: 1; }
-.ms-item__edit:hover  { color: var(--adm-accent); }
+.ms-item__edit:hover  { color: var(--adm-secure); }
 .ms-item__delete:hover { color: #ef4444; }
 
 /* ── divider ──────────────────────────── */
@@ -325,7 +325,7 @@
   border: 1px solid var(--adm-border);
   border-radius: 6px;
   padding: 8px 10px;
-  font-family: 'Archivo', sans-serif;
+  font-family: var(--adm-sans);
   font-size: 12px;
   color: var(--adm-text);
   outline: none;
@@ -333,7 +333,7 @@
   transition: border-color 0.15s;
 }
 
-.ms-input:focus { border-color: var(--adm-accent); }
+.ms-input:focus { border-color: var(--adm-secure); }
 .ms-input::placeholder { color: var(--adm-text-muted); }
 
 .ms-textarea {
@@ -435,7 +435,7 @@
   border: 1px solid var(--adm-border);
   border-radius: 6px;
   padding: 8px 32px 8px 30px;
-  font-family: 'Archivo', sans-serif;
+  font-family: var(--adm-sans);
   font-size: 12px;
   color: var(--adm-text);
   outline: none;
@@ -443,7 +443,7 @@
   transition: border-color 0.15s;
 }
 
-.ms-search-input:focus { border-color: var(--adm-accent); }
+.ms-search-input:focus { border-color: var(--adm-secure); }
 .ms-search-input::placeholder { color: var(--adm-text-muted); }
 
 .ms-search-spinner {
@@ -452,12 +452,10 @@
   width: 12px;
   height: 12px;
   border: 1.5px solid var(--adm-border);
-  border-top-color: var(--adm-accent);
+  border-top-color: var(--adm-secure);
   border-radius: 50%;
-  animation: ms-spin 0.6s linear infinite;
+  animation: adm-spin 0.6s linear infinite;
 }
-
-@keyframes ms-spin { to { transform: rotate(360deg); } }
 
 .ms-search-results {
   position: absolute;
@@ -508,8 +506,8 @@
   gap: 8px;
   padding: 10px 12px;
   border-radius: 6px;
-  border: 1px solid #37C2B844;
-  background: #37C2B80c;
+  border: 1px solid rgb(var(--adm-secure-rgb) / 0.27);
+  background: rgb(var(--adm-secure-rgb) / 0.05);
 }
 
 .ms-boundary-found__info {
@@ -522,23 +520,23 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #37C2B8;
-  box-shadow: 0 0 6px #37C2B888;
+  background: var(--adm-secure);
+  box-shadow: 0 0 6px rgb(var(--adm-secure-rgb) / 0.53);
   flex-shrink: 0;
 }
 
 .ms-boundary-found__label {
   font-size: 11px;
-  color: #37C2B8;
+  color: var(--adm-secure);
 }
 
 .ms-use-boundary-btn {
   width: 100%;
   padding: 7px 0;
   border-radius: 5px;
-  border: 1px solid #37C2B8;
-  background: color-mix(in srgb, #37C2B8 15%, transparent);
-  color: #37C2B8;
+  border: 1px solid var(--adm-secure);
+  background: color-mix(in srgb, var(--adm-secure) 15%, transparent);
+  color: var(--adm-secure);
   font-family: var(--adm-mono);
   font-size: 9.5px;
   font-weight: 700;
@@ -548,11 +546,11 @@
 }
 
 .ms-use-boundary-btn:hover {
-  background: color-mix(in srgb, #37C2B8 25%, transparent);
+  background: color-mix(in srgb, var(--adm-secure) 25%, transparent);
 }
 
 .ms-use-boundary-btn.used {
-  background: color-mix(in srgb, #37C2B8 20%, transparent);
+  background: color-mix(in srgb, var(--adm-secure) 20%, transparent);
   cursor: default;
 }
 
@@ -571,9 +569,9 @@
   width: 100%;
   padding: 9px 0;
   border-radius: 6px;
-  border: 1px solid var(--adm-accent);
-  background: color-mix(in srgb, var(--adm-accent) 10%, transparent);
-  color: var(--adm-accent);
+  border: 1px solid var(--adm-secure);
+  background: color-mix(in srgb, var(--adm-secure) 10%, transparent);
+  color: var(--adm-secure);
   font-family: var(--adm-mono);
   font-size: 10px;
   font-weight: 600;
@@ -583,7 +581,7 @@
 }
 
 .ms-draw-start-btn:hover {
-  background: color-mix(in srgb, var(--adm-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--adm-secure) 18%, transparent);
 }
 
 .ms-draw-redo-btn {
@@ -643,8 +641,8 @@
 }
 
 .ms-btn--primary {
-  background: var(--adm-accent);
-  border: 1px solid var(--adm-accent);
+  background: var(--adm-secure);
+  border: 1px solid var(--adm-secure);
   color: #fff;
 }
 
@@ -672,7 +670,7 @@
   bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 14, 18, 0.85);
+  background: rgba(15, 23, 42, 0.85);
   border: 1px solid var(--adm-border);
   backdrop-filter: blur(6px);
   border-radius: 6px;

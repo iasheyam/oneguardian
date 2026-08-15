@@ -4,12 +4,13 @@ import './MapControls.css'
 
 export const MAP_STYLES = {
   dark:      'mapbox://styles/mapbox/dark-v11',
+  light:     'mapbox://styles/mapbox/streets-v12',
   satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
 }
 
 const POI_TYPES = {
   police:   { label: 'Police',   color: '#4A90E2', Icon: PoliceIcon },
-  hospital: { label: 'Hospital', color: '#F2495B', Icon: HospitalIcon },
+  hospital: { label: 'Hospital', color: '#F43F5E', Icon: HospitalIcon },
 }
 
 async function fetchOverpassPOIs(amenity, center) {
@@ -33,7 +34,7 @@ async function fetchOverpassPOIs(amenity, center) {
     .filter(el => el.lat && el.lng)
 }
 
-export function MapControls({ mapStyle, onStyleChange }) {
+export function MapControls({ mapStyle, onStyleChange, baseStyle = 'dark' }) {
   const { current: map } = useMap()
 
   const [active,      setActive]      = useState({})
@@ -56,7 +57,7 @@ export function MapControls({ mapStyle, onStyleChange }) {
       .finally(() => setLoading(l => ({ ...l, [type]: false })))
   }
 
-  const poiColor   = kind => POI_TYPES[kind]?.color ?? '#AEB8BD'
+  const poiColor   = kind => POI_TYPES[kind]?.color ?? 'var(--adm-text-muted)'
   const activeStyle = (type) => active[type]
     ? { color: poiColor(type), background: `${poiColor(type)}18` }
     : {}
@@ -67,8 +68,8 @@ export function MapControls({ mapStyle, onStyleChange }) {
         {/* Style toggle */}
         <div className="mc-group mc-group--row">
           <button
-            className={`mc-btn${mapStyle === 'dark'      ? ' mc-btn--active' : ''}`}
-            onClick={() => onStyleChange('dark')}
+            className={`mc-btn${mapStyle !== 'satellite' ? ' mc-btn--active' : ''}`}
+            onClick={() => onStyleChange(baseStyle)}
           >MAP</button>
           <button
             className={`mc-btn${mapStyle === 'satellite' ? ' mc-btn--active' : ''}`}
@@ -155,7 +156,7 @@ export function MapControls({ mapStyle, onStyleChange }) {
               {selectedPOI.emergency && <UpuRow k="EMERGENCY" v={selectedPOI.emergency} />}
               {selectedPOI.website   && (
                 <UpuRow k="WEBSITE" v={
-                  <a href={selectedPOI.website} target="_blank" rel="noreferrer" style={{ color: '#37C2B8' }}>
+                  <a href={selectedPOI.website} target="_blank" rel="noreferrer" style={{ color: '#22D3EE' }}>
                     {selectedPOI.website.replace(/^https?:\/\//, '')}
                   </a>
                 } />

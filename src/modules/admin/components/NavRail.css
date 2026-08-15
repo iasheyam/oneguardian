@@ -50,7 +50,7 @@
 }
 
 .nav-item:hover {
-  background: rgba(55, 194, 184, 0.05);
+  background: rgb(var(--adm-secure-rgb) / 0.05);
   color: var(--adm-text);
 }
 
@@ -75,14 +75,18 @@
 .nav-rail__footer {
   width: 100%;
   padding: 0 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
+.nav-item--theme,
 .nav-item--logout {
   color: var(--adm-text-muted);
 }
 
 .nav-item--logout:hover {
-  background: rgba(239, 68, 68, 0.08);
-  color: #ef4444;
+  background: rgb(var(--adm-duress-rgb) / 0.08);
+  color: var(--adm-duress);
   border-color: transparent;
 }

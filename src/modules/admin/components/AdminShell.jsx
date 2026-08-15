@@ -203,10 +203,10 @@ export default function AdminShell() {
     const unitWarn    = allUnits.filter(u => u.status === 'warning').length
     const warnCount   = activeAlerts.filter(a => a.level === 'warning').length + unitWarn
     if (duressCount > 0)
-      return { level: 'duress',  text: `${duressCount} DURESS ACTIVE`, color: '#F2495B' }
+      return { level: 'duress',  text: `${duressCount} DURESS ACTIVE`, color: '#F43F5E' }
     if (warnCount > 0)
-      return { level: 'warning', text: `${warnCount} WARNING${warnCount > 1 ? 'S' : ''}`, color: '#E0A63C' }
-    return { level: 'secure', text: 'ALL SECURE', color: '#37C2B8' }
+      return { level: 'warning', text: `${warnCount} WARNING${warnCount > 1 ? 'S' : ''}`, color: '#FB923C' }
+    return { level: 'secure', text: 'ALL SECURE', color: '#22D3EE' }
   }, [activeAlerts, accounts])
 
   const crumb = useMemo(() => {

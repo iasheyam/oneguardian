@@ -17,8 +17,8 @@ const ALARM_OPTIONS = [
 ]
 
 const SEVERITY_COLORS = {
-  red_alert: '#F2495B',
-  warning:   '#E0A63C',
+  red_alert: '#F43F5E',
+  warning:   '#FB923C',
   advisory:  '#7B8FBD',
 }
 
